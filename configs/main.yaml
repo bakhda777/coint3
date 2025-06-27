@@ -8,3 +8,8 @@ backtest:
   rolling_window: 30
   zscore_threshold: 1.5
   fill_limit_pct: 0.2
+walk_forward:
+  start_date: "2021-01-01"
+  end_date: "2021-12-31"
+  training_period_days: 30
+  testing_period_days: 7
