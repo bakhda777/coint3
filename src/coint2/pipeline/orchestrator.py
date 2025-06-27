@@ -11,6 +11,7 @@ from coint2.engine.backtest_engine import PairBacktester
 from coint2.pipeline.pair_scanner import find_cointegrated_pairs
 from coint2.utils.config import CONFIG
 from coint2.utils.logging_utils import get_logger
+import pandas as pd
 
 
 def run_full_pipeline() -> List[Dict[str, object]]:
@@ -24,9 +25,18 @@ def run_full_pipeline() -> List[Dict[str, object]]:
     )
 
     logger.info("Scanning for cointegrated pairs")
+
+    ddf = handler._load_full_dataset()
+    if ddf.columns:
+        end_date = ddf["timestamp"].max().compute()
+    else:
+        end_date = pd.Timestamp.now()
+    start_date = end_date - pd.Timedelta(days=cfg.pair_selection.lookback_days)
+
     pairs = find_cointegrated_pairs(
         handler,
-        cfg.pair_selection.lookback_days,
+        start_date,
+        end_date,
         cfg.pair_selection.coint_pvalue_threshold,
     )
     logger.info("Found %d pairs", len(pairs))
@@ -37,7 +47,7 @@ def run_full_pipeline() -> List[Dict[str, object]]:
     all_metrics: List[Dict[str, object]] = []
     for s1, s2 in pairs:
         logger.info("Backtesting %s-%s", s1, s2)
-        pair_data = handler.load_pair_data(s1, s2)
+        pair_data = handler.load_pair_data(s1, s2, start_date, end_date)
         bt = PairBacktester(
             pair_data,
             window=cfg.backtest.rolling_window,

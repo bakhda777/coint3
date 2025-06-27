@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import click
+import pandas as pd
 
 from coint2.core.data_loader import DataHandler
 from coint2.engine.backtest_engine import PairBacktester
@@ -24,9 +25,19 @@ def scan() -> None:
     logger = get_logger("scan")
     cfg = CONFIG
     handler = DataHandler(cfg.data_dir, cfg.backtest.timeframe, cfg.backtest.fill_limit_pct)
+
+    ddf = handler._load_full_dataset()
+    if not ddf.columns:
+        click.echo("No data available")
+        return
+
+    end_date = ddf["timestamp"].max().compute()
+    start_date = end_date - pd.Timedelta(days=cfg.pair_selection.lookback_days)
+
     pairs = find_cointegrated_pairs(
         handler,
-        cfg.pair_selection.lookback_days,
+        start_date,
+        end_date,
         cfg.pair_selection.coint_pvalue_threshold,
     )
     if not pairs:
@@ -47,7 +58,16 @@ def backtest(pair: str) -> None:
     handler = DataHandler(
         cfg.data_dir, cfg.backtest.timeframe, cfg.backtest.fill_limit_pct
     )
-    data = handler.load_pair_data(s1, s2)
+
+    ddf = handler._load_full_dataset()
+    if not ddf.columns:
+        click.echo("No data available")
+        return
+
+    end_date = ddf["timestamp"].max().compute()
+    start_date = ddf["timestamp"].min().compute()
+
+    data = handler.load_pair_data(s1, s2, start_date, end_date)
     bt = PairBacktester(
         data,
         window=cfg.backtest.rolling_window,
