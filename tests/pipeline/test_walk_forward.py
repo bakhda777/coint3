@@ -30,10 +30,17 @@ def manual_walk_forward(handler: DataHandler, cfg: AppConfig) -> dict:
         test_end = test_start + pd.Timedelta(days=cfg.walk_forward.testing_period_days)
         if test_end > end:
             break
+        train = handler.load_pair_data("A", "B", current, train_end)
+        beta = train["A"].cov(train["B"]) / train["B"].var()
+        spread = train["A"] - beta * train["B"]
+        mean = spread.mean()
+        std = spread.std()
         data = handler.load_pair_data("A", "B", test_start, test_end)
         bt = PairBacktester(
             data,
-            window=cfg.backtest.rolling_window,
+            beta=beta,
+            spread_mean=mean,
+            spread_std=std,
             z_threshold=cfg.backtest.zscore_threshold,
         )
         bt.run()
@@ -78,7 +85,12 @@ def test_walk_forward(monkeypatch, tmp_path: Path) -> None:
 
     def fake_find_pairs(handler, start, end, thr):
         calls.append((pd.Timestamp(start), pd.Timestamp(end)))
-        return [("A", "B")]
+        df = handler.load_pair_data("A", "B", start, end)
+        beta = df["A"].cov(df["B"]) / df["B"].var()
+        spread = df["A"] - beta * df["B"]
+        mean = spread.mean()
+        std = spread.std()
+        return [("A", "B", beta, mean, std)]
 
     monkeypatch.setattr(wf, "find_cointegrated_pairs", fake_find_pairs)
 

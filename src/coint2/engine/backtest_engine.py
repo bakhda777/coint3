@@ -1,25 +1,38 @@
 import pandas as pd
-from ..core import math_utils
 from ..core import performance
 
 
 class PairBacktester:
     """Vectorized backtester for a single pair."""
 
-    def __init__(self, pair_data: pd.DataFrame, window: int, z_threshold: float):
-        """Initialize backtester.
+    def __init__(
+        self,
+        pair_data: pd.DataFrame,
+        beta: float,
+        spread_mean: float,
+        spread_std: float,
+        z_threshold: float,
+    ):
+        """Initialize backtester with pre-computed parameters.
 
         Parameters
         ----------
         pair_data : pd.DataFrame
             DataFrame with two columns containing price series for the pair.
-        window : int
-            Rolling window for beta and z-score calculation.
+        beta : float
+            Regression coefficient between ``y`` and ``x`` estimated on the
+            training period.
+        spread_mean : float
+            Mean of the spread from the training period.
+        spread_std : float
+            Standard deviation of the spread from the training period.
         z_threshold : float
             Z-score absolute threshold for entry signals.
         """
         self.pair_data = pair_data.copy()
-        self.window = window
+        self.beta = beta
+        self.mean = spread_mean
+        self.std = spread_std
         self.z_threshold = z_threshold
         self.results: pd.DataFrame | None = None
 
@@ -32,19 +45,18 @@ class PairBacktester:
             self.results = pd.DataFrame(columns=["spread", "z_score", "position", "pnl", "cumulative_pnl"])
             return
 
-        df = self.pair_data.rename(columns={
-            self.pair_data.columns[0]: 'y',
-            self.pair_data.columns[1]: 'x'
-        })
+        df = self.pair_data.rename(
+            columns={
+                self.pair_data.columns[0]: "y",
+                self.pair_data.columns[1]: "x",
+            }
+        )
 
-        # rolling beta of y ~ x
-        df["beta"] = math_utils.rolling_beta(df["y"], df["x"], self.window)
+        # compute spread using pre-calculated beta
+        df["spread"] = df["y"] - self.beta * df["x"]
 
-        # compute spread y - beta * x
-        df["spread"] = df["y"] - df["beta"] * df["x"]
-
-        # Используем правильное имя функции `rolling_zscore`
-        df["z_score"] = math_utils.rolling_zscore(df["spread"], self.window)
+        # z-score using fixed mean and std from training period
+        df["z_score"] = (df["spread"] - self.mean) / self.std
 
         # generate long/short signals: long when z_score < -threshold, short when z_score > threshold
         df["signal"] = 0

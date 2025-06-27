@@ -4,6 +4,8 @@ from pathlib import Path
 from itertools import combinations
 
 from coint2.core.data_loader import DataHandler
+import numpy as np
+
 from coint2.pipeline.pair_scanner import find_cointegrated_pairs, _coint_test
 
 
@@ -35,4 +37,16 @@ def test_find_cointegrated_pairs(tmp_path: Path) -> None:
     start = data.index.min()
     end = data.index.max()
     pairs = find_cointegrated_pairs(handler, start, end, p_value_threshold=0.05)
-    assert set(pairs) == set(expected)
+    assert len(pairs) == len(expected)
+
+    returned = pairs[0]
+    assert returned[:2] == expected[0]
+
+    beta = data["A"].cov(data["B"]) / data["B"].var()
+    spread = data["A"] - beta * data["B"]
+    mean = spread.mean()
+    std = spread.std()
+
+    assert np.isclose(returned[2], beta)
+    assert np.isclose(returned[3], mean)
+    assert np.isclose(returned[4], std)

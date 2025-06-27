@@ -60,11 +60,13 @@ def run_walk_forward() -> Dict[str, float]:
         )
 
         step_pnl = pd.Series(dtype=float)
-        for s1, s2 in pairs:
+        for s1, s2, beta, mean, std in pairs:
             pair_data = handler.load_pair_data(s1, s2, testing_start, testing_end)
             bt = PairBacktester(
                 pair_data,
-                window=cfg.backtest.rolling_window,
+                beta=beta,
+                spread_mean=mean,
+                spread_std=std,
                 z_threshold=cfg.backtest.zscore_threshold,
             )
             bt.run()

@@ -5,19 +5,29 @@ import numpy as np
 
 # Импортируем код проекта напрямую
 from coint2.engine.backtest_engine import PairBacktester
-from coint2.core import math_utils, performance
+from coint2.core import performance
 
-def manual_backtest(df: pd.DataFrame, window: int, z_threshold: float) -> pd.DataFrame:
+def calc_params(df: pd.DataFrame) -> tuple[float, float, float]:
+    """Calculate beta, mean and std of spread for the given DataFrame."""
+    y_col, x_col = df.columns[0], df.columns[1]
+    beta = df[y_col].cov(df[x_col]) / df[x_col].var()
+    spread = df[y_col] - beta * df[x_col]
+    return beta, spread.mean(), spread.std()
+
+
+def manual_backtest(
+    df: pd.DataFrame,
+    beta: float,
+    mean: float,
+    std: float,
+    z_threshold: float,
+) -> pd.DataFrame:
     """Эталонная реализация логики бэктеста для проверки."""
     df = df.copy()
-    # Делаем код независимым от имен колонок, как в основном классе
     y_col, x_col = df.columns[0], df.columns[1]
 
-    df["beta"] = math_utils.rolling_beta(df[y_col], df[x_col], window)
-    df["spread"] = df[y_col] - df["beta"] * df[x_col]
-    
-    # ИСПРАВЛЕНИЕ: Используем правильное имя функции `rolling_zscore`
-    df["z_score"] = math_utils.rolling_zscore(df["spread"], window)
+    df["spread"] = df[y_col] - beta * df[x_col]
+    df["z_score"] = (df["spread"] - mean) / std
     
     df["signal"] = 0
     df.loc[df["z_score"] > z_threshold, "signal"] = -1
@@ -38,15 +48,22 @@ def test_backtester_outputs():
         "ASSET_X": np.linspace(1, 20, 20)
     })
 
-    window = 5
     z_threshold = 1.0
 
-    bt = PairBacktester(data, window=window, z_threshold=z_threshold)
+    beta, mean, std = calc_params(data)
+
+    bt = PairBacktester(
+        data,
+        beta=beta,
+        spread_mean=mean,
+        spread_std=std,
+        z_threshold=z_threshold,
+    )
     bt.run()
     result = bt.get_results()
 
     # Сравниваем с эталоном
-    expected = manual_backtest(data, window, z_threshold)
+    expected = manual_backtest(data, beta, mean, std, z_threshold)
     expected_for_comparison = expected[["spread", "z_score", "position", "pnl", "cumulative_pnl"]]
     
     pd.testing.assert_frame_equal(result, expected_for_comparison)
