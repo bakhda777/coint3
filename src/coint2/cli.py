@@ -63,7 +63,14 @@ def backtest(pair: str) -> None:
 def run_pipeline_cmd() -> None:
     """Run full pipeline of scanning and backtesting."""
 
-    run_full_pipeline()
+    results = run_full_pipeline()
+    for entry in results:
+        pair = entry.get("pair")
+        if pair:
+            click.echo(f"{pair[0]},{pair[1]}")
+        for key, value in entry.items():
+            if key != "pair":
+                click.echo(f"  {key}: {value}")
 
 
 if __name__ == "__main__":
