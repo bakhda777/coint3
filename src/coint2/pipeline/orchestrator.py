@@ -42,8 +42,13 @@ def run_full_pipeline() -> List[Dict[str, object]]:
     for s1, s2 in pairs:
         logger.info("Backtesting %s-%s", s1, s2)
         pair_data = handler.load_pair_data(s1, s2)
-        bt = PairBacktester(pair_data, cfg.backtest)
-        metrics = bt.run()
+        bt = PairBacktester(
+            pair_data,
+            window=cfg.backtest.rolling_window,
+            z_threshold=cfg.backtest.zscore_threshold,
+        )
+        bt.run()
+        metrics = bt.get_performance_metrics()
         logger.info("Metrics for %s-%s: %s", s1, s2, metrics)
 
         metrics_path = results_dir / f"{s1}_{s2}_metrics.json"

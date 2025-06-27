@@ -5,7 +5,7 @@ from coint2.core.data_loader import DataHandler
 from coint2.pipeline.pair_scanner import find_cointegrated_pairs
 
 
-def create_parquet_files(tmp_path: Path):
+def create_parquet_files(tmp_path: Path) -> None:
     idx = pd.date_range('2021-01-01', periods=20, freq='D')
     a = pd.Series(range(20), index=idx)
     b = a + 0.1  # cointegrated
@@ -16,10 +16,9 @@ def create_parquet_files(tmp_path: Path):
         df.to_parquet(tmp_path / '1d' / f'{sym}.parquet')
 
 
-def test_find_cointegrated_pairs(tmp_path: Path):
+def test_find_cointegrated_pairs(tmp_path: Path) -> None:
     create_parquet_files(tmp_path)
     handler = DataHandler(tmp_path, '1d', fill_limit_pct=0.1)
     data = handler.load_all_data_for_period(lookback_days=20)
     pairs = find_cointegrated_pairs(data, p_value_threshold=0.05)
     assert ('A', 'B') in pairs or ('B', 'A') in pairs
-

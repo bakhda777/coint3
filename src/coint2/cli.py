@@ -41,10 +41,17 @@ def backtest(pair: str) -> None:
 
     cfg = CONFIG
     s1, s2 = [p.strip() for p in pair.split(",")]
-    handler = DataHandler(cfg.data_dir, cfg.backtest.timeframe, cfg.backtest.fill_limit_pct)
+    handler = DataHandler(
+        cfg.data_dir, cfg.backtest.timeframe, cfg.backtest.fill_limit_pct
+    )
     data = handler.load_pair_data(s1, s2)
-    bt = PairBacktester(data, cfg.backtest)
-    metrics = bt.run()
+    bt = PairBacktester(
+        data,
+        window=cfg.backtest.rolling_window,
+        z_threshold=cfg.backtest.zscore_threshold,
+    )
+    bt.run()
+    metrics = bt.get_performance_metrics()
     for k, v in metrics.items():
         click.echo(f"{k}: {v}")
 
