@@ -78,7 +78,7 @@ def test_walk_forward(monkeypatch, tmp_path: Path) -> None:
 
     def fake_find_pairs(handler, start, end, thr):
         calls.append((pd.Timestamp(start), pd.Timestamp(end)))
-        return [("A", "B")]
+        return [("A", "B", 1.0, 0.0, 1.0)]
 
     monkeypatch.setattr(wf, "find_cointegrated_pairs", fake_find_pairs)
 

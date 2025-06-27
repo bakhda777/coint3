@@ -60,7 +60,7 @@ def run_walk_forward() -> Dict[str, float]:
         )
 
         step_pnl = pd.Series(dtype=float)
-        for s1, s2 in pairs:
+        for s1, s2, *_ in pairs:
             pair_data = handler.load_pair_data(s1, s2, testing_start, testing_end)
             bt = PairBacktester(
                 pair_data,

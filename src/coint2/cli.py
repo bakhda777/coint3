@@ -45,7 +45,7 @@ def scan() -> None:
         click.echo("No cointegrated pairs found")
         return
     logger.info("Found %d cointegrated pairs", len(pairs))
-    for s1, s2 in pairs:
+    for s1, s2, *_ in pairs:
         click.echo(f"{s1},{s2}")
 
 

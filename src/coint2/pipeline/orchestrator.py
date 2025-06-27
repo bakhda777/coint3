@@ -45,7 +45,7 @@ def run_full_pipeline() -> List[Dict[str, object]]:
     results_dir.mkdir(parents=True, exist_ok=True)
 
     all_metrics: List[Dict[str, object]] = []
-    for s1, s2 in pairs:
+    for s1, s2, *_ in pairs:
         logger.info("Backtesting %s-%s", s1, s2)
         pair_data = handler.load_pair_data(s1, s2, start_date, end_date)
         bt = PairBacktester(
