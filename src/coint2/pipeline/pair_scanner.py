@@ -21,14 +21,33 @@ def _test_pair_for_coint(
     start_date: pd.Timestamp,
     end_date: pd.Timestamp,
     p_value_threshold: float,
-) -> Tuple[str, str] | None:
+) -> Tuple[str, str, float, float, float] | None:
     """Lazy test for a single pair using provided handler and dates."""
     pair_data = handler.load_pair_data(symbol1, symbol2, start_date, end_date)
     if pair_data.empty or len(pair_data.columns) < 2:
         return None
 
-    pvalue = _coint_test(pair_data[symbol1].dropna(), pair_data[symbol2].dropna())
-    return (symbol1, symbol2) if pvalue < p_value_threshold else None
+    series1 = pair_data[symbol1].dropna()
+    series2 = pair_data[symbol2].dropna()
+
+    if series1.empty or series2.empty:
+        return None
+
+    pvalue = _coint_test(series1, series2)
+    if pvalue >= p_value_threshold:
+        return None
+
+    cov = series1.cov(series2)
+    var = series2.var()
+    if var == 0:
+        return None
+
+    beta = cov / var
+    spread = series1 - beta * series2
+    spread_mean = spread.mean()
+    spread_std = spread.std()
+
+    return (symbol1, symbol2, beta, spread_mean, spread_std)
 
 
 def find_cointegrated_pairs(
@@ -36,8 +55,8 @@ def find_cointegrated_pairs(
     start_date: pd.Timestamp,
     end_date: pd.Timestamp,
     p_value_threshold: float,
-) -> List[Tuple[str, str]]:
-    """Generate and compute dask tasks to find cointegrated pairs."""
+) -> List[Tuple[str, str, float, float, float]]:
+    """Generate and compute dask tasks to find cointegrated pairs with params."""
     all_symbols = handler.get_all_symbols()
     all_pairs = list(combinations(all_symbols, 2))
 
