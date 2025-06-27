@@ -1,4 +1,4 @@
-data_dir: "data"
+data_dir: "data_optimized"
 results_dir: "results"
 pair_selection:
   lookback_days: 90
