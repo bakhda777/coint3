@@ -1,3 +1,4 @@
+import dask.dataframe as dd
 import pandas as pd  # type: ignore
 from pathlib import Path
 from typing import List
@@ -12,7 +13,7 @@ class DataHandler:
         self.timeframe = timeframe
         self.fill_limit_pct = fill_limit_pct
         self.data_dir.mkdir(parents=True, exist_ok=True)
-        self._all_data_cache: pd.DataFrame | None = None
+        self._all_data_cache: dd.DataFrame | None = None
 
     def get_all_symbols(self) -> List[str]:
         """Return list of symbols based on partition directory names."""
@@ -25,47 +26,55 @@ class DataHandler:
                 symbols.append(path.name.replace("symbol=", ""))
         return sorted(symbols)
 
-    def _load_full_dataset(self) -> pd.DataFrame:
-        """Load the entire partitioned dataset and cache the result."""
+    def _load_full_dataset(self) -> dd.DataFrame:
+        """Create a lazy Dask DataFrame from the partitioned dataset."""
         if self._all_data_cache is not None:
             return self._all_data_cache
 
         if not self.data_dir.exists():
-            self._all_data_cache = pd.DataFrame()
+            # empty Dask DataFrame
+            self._all_data_cache = dd.from_pandas(pd.DataFrame(), npartitions=1)
             return self._all_data_cache
 
-        full_df = pd.read_parquet(self.data_dir, engine="pyarrow")
+        ddf = dd.read_parquet(self.data_dir, engine="pyarrow")
 
-        if "timestamp" in full_df.columns:
-            full_df = full_df.set_index("timestamp")
-
-        full_df.index = pd.to_datetime(full_df.index)
-        full_df = full_df.sort_index()
-
-        self._all_data_cache = full_df
-        return full_df
+        self._all_data_cache = ddf
+        return ddf
 
     def load_all_data_for_period(self, lookback_days: int) -> pd.DataFrame:
         """Load close prices for all symbols for the given lookback period."""
-        full_df = self._load_full_dataset()
-        if full_df.empty:
+        ddf = self._load_full_dataset()
+
+        if not ddf.columns:
             return pd.DataFrame()
 
-        end_date = full_df.index.max()
-        start_date = end_date - pd.Timedelta(days=lookback_days)
+        end_date = ddf["timestamp"].max().compute()
+        if pd.isna(end_date):
+            return pd.DataFrame()
 
-        filtered_df = full_df[full_df.index >= start_date]
-        wide = filtered_df.pivot_table(index=filtered_df.index, columns="symbol", values="close")
+        start_date = end_date - pd.Timedelta(days=lookback_days)
+        filtered_ddf = ddf[ddf["timestamp"] >= start_date]
+        filtered_pdf = filtered_ddf.compute()
+        if filtered_pdf.empty:
+            return pd.DataFrame()
+
+        filtered_pdf["timestamp"] = pd.to_datetime(filtered_pdf["timestamp"])
+        wide = filtered_pdf.pivot_table(index="timestamp", columns="symbol", values="close")
+        wide = wide.sort_index()
         return wide
 
     def load_pair_data(self, symbol1: str, symbol2: str) -> pd.DataFrame:
         """Load and align data for two symbols."""
-        full_df = self._load_full_dataset()
-        if full_df.empty:
+        ddf = self._load_full_dataset()
+
+        pair_ddf = ddf[ddf["symbol"].isin([symbol1, symbol2])]
+        pair_pdf = pair_ddf.compute()
+
+        if pair_pdf.empty:
             return pd.DataFrame()
 
-        pair_df = full_df[full_df["symbol"].isin([symbol1, symbol2])]
-        wide_df = pair_df.pivot_table(index=pair_df.index, columns="symbol", values="close")
+        pair_pdf["timestamp"] = pd.to_datetime(pair_pdf["timestamp"])
+        wide_df = pair_pdf.pivot_table(index="timestamp", columns="symbol", values="close")
 
         if wide_df.empty:
             return pd.DataFrame()
