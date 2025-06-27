@@ -1,10 +1,9 @@
 """Configuration utilities using Pydantic models."""
 
 from pathlib import Path
-from typing import Any
 
-import yaml
-from pydantic import BaseModel, DirectoryPath
+import yaml  # type: ignore
+from pydantic import BaseModel, DirectoryPath  # type: ignore
 
 
 class PairSelectionConfig(BaseModel):
