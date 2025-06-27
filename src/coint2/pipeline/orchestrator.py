@@ -44,8 +44,8 @@ def run_full_pipeline() -> List[Dict[str, object]]:
         pair_data = handler.load_pair_data(s1, s2)
         bt = PairBacktester(
             pair_data,
-            cfg.backtest.rolling_window,
-            cfg.backtest.zscore_threshold,
+            window=cfg.backtest.rolling_window,
+            z_threshold=cfg.backtest.zscore_threshold,
         )
         bt.run()
         metrics = bt.get_performance_metrics()
