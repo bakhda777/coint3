@@ -24,8 +24,11 @@ def scan() -> None:
     logger = get_logger("scan")
     cfg = CONFIG
     handler = DataHandler(cfg.data_dir, cfg.backtest.timeframe, cfg.backtest.fill_limit_pct)
-    data = handler.load_all_data_for_period(cfg.pair_selection.lookback_days)
-    pairs = find_cointegrated_pairs(data, cfg.pair_selection.coint_pvalue_threshold)
+    pairs = find_cointegrated_pairs(
+        handler,
+        cfg.pair_selection.lookback_days,
+        cfg.pair_selection.coint_pvalue_threshold,
+    )
     if not pairs:
         click.echo("No cointegrated pairs found")
         return

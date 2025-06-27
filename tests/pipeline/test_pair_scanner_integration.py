@@ -1,8 +1,10 @@
 import pandas as pd
 from pathlib import Path
 
+from itertools import combinations
+
 from coint2.core.data_loader import DataHandler
-from coint2.pipeline.pair_scanner import find_cointegrated_pairs
+from coint2.pipeline.pair_scanner import find_cointegrated_pairs, _coint_test
 
 
 def create_parquet_files(tmp_path: Path) -> None:
@@ -22,5 +24,13 @@ def test_find_cointegrated_pairs(tmp_path: Path) -> None:
     create_parquet_files(tmp_path)
     handler = DataHandler(tmp_path, '1d', fill_limit_pct=0.1)
     data = handler.load_all_data_for_period(lookback_days=20)
-    pairs = find_cointegrated_pairs(data, p_value_threshold=0.05)
-    assert ('A', 'B') in pairs or ('B', 'A') in pairs
+
+    # reference sequential implementation
+    expected: list[tuple[str, str]] = []
+    for s1, s2 in combinations(data.columns, 2):
+        pval = _coint_test(data[s1].dropna(), data[s2].dropna())
+        if pval < 0.05:
+            expected.append((s1, s2))
+
+    pairs = find_cointegrated_pairs(handler, lookback_days=20, p_value_threshold=0.05)
+    assert set(pairs) == set(expected)
