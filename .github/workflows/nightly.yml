@@ -1,0 +1,19 @@
+name: Nightly
+on:
+  schedule:
+    - cron: '0 0 * * *'
+jobs:
+  nightly:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: |
+          pip install poetry
+          poetry install
+      - name: Run full pipeline
+        run: poetry run python -m coint2.pipeline.orchestrator

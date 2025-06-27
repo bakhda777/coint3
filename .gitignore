@@ -1,0 +1,5 @@
+data_optimized/
+*.pyc
+__pycache__/
+
+.venv/
