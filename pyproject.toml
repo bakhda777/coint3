@@ -11,10 +11,12 @@ click = "*"
 joblib = "*"
 pydantic = "*"
 pyyaml = "*" 
-# ↓↓↓ ЭТИ ЗАВИСИМОСТИ МЫ БЕРЕМ ИЗ ВЕТКИ CODEX ↓↓↓
 numpy = "*"
 pandas = "*"
 scipy = "*"
+# ↓↓↓ ЭТИ ЗАВИСИМОСТИ МЫ БЕРЕМ ИЗ ВЕТКИ CODEX ↓↓↓
+pyarrow = "*"
+statsmodels = "*"
 
 [tool.poetry.dev-dependencies]
 pytest = "*"
