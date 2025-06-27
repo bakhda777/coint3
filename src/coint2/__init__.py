@@ -1,1 +1,1 @@
-
+"""coint2 package initialization."""

@@ -10,6 +10,8 @@ python = "^3.10"
 click = "*"
 joblib = "*"
 pydantic = "*"
+# ↓↓↓ ЭТУ СТРОКУ МЫ ДОБАВИЛИ ИЗ ВЕРСИИ CODEX ↓↓↓
+pyyaml = "*" 
 
 [tool.poetry.dev-dependencies]
 pytest = "*"
