@@ -1,9 +1,9 @@
 from itertools import combinations
 from typing import List, Tuple
 
-import pandas as pd
-from joblib import Parallel, delayed
-from statsmodels.tsa.stattools import coint
+import pandas as pd  # type: ignore
+from joblib import Parallel, delayed  # type: ignore
+from statsmodels.tsa.stattools import coint  # type: ignore
 
 
 def _coint_test(series1: pd.Series, series2: pd.Series) -> float:

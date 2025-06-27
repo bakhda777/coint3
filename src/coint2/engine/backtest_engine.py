@@ -1,54 +1,92 @@
-"""Vectorized pair backtesting engine."""
-
-from __future__ import annotations
-
-import numpy as np
 import pandas as pd
-
-from coint2.core.math_utils import rolling_beta, rolling_zscore
-from coint2.core.performance import max_drawdown, sharpe_ratio
+from ..core import math_utils
+from ..core import performance
 
 
 class PairBacktester:
-    """Run a simple mean-reversion backtest on a pair of prices."""
+    """Vectorized backtester for a single pair."""
 
-    def __init__(self, prices: pd.DataFrame, window: int, z_threshold: float) -> None:
-        self.prices = prices.copy()
+    def __init__(self, pair_data: pd.DataFrame, window: int, z_threshold: float):
+        """Initialize backtester.
+
+        Parameters
+        ----------
+        pair_data : pd.DataFrame
+            DataFrame with two columns containing price series for the pair.
+        window : int
+            Rolling window for beta and z-score calculation.
+        z_threshold : float
+            Z-score absolute threshold for entry signals.
+        """
+        self.pair_data = pair_data.copy()
         self.window = window
         self.z_threshold = z_threshold
         self.results: pd.DataFrame | None = None
 
-    def run(self) -> pd.DataFrame:
-        """Execute backtest and return dataframe with calculations."""
-        df = self.prices.copy()
-        s1, s2 = df.iloc[:, 0], df.iloc[:, 1]
+    def run(self) -> None:
+        """Run backtest and store results in ``self.results``."""
+        # Улучшение: делаем код независимым от имен колонок,
+        # переименовывая их в 'y' и 'x' для удобства.
+        if self.pair_data.empty or len(self.pair_data.columns) < 2:
+            # Создаем пустой DataFrame с нужными колонками, чтобы избежать ошибок дальше
+            self.results = pd.DataFrame(columns=["spread", "z_score", "position", "pnl", "cumulative_pnl"])
+            return
 
-        df["beta"] = rolling_beta(s1, s2, self.window)
-        df["spread"] = s1 - df["beta"] * s2
-        df["z_score"] = rolling_zscore(df["spread"], self.window)
+        df = self.pair_data.rename(columns={
+            self.pair_data.columns[0]: 'y',
+            self.pair_data.columns[1]: 'x'
+        })
 
-        signals = pd.Series(0, index=df.index, dtype=float)
-        signals[df["z_score"] > self.z_threshold] = -1
-        signals[df["z_score"] < -self.z_threshold] = 1
-        df["signal"] = signals
+        # rolling beta of y ~ x
+        df["beta"] = math_utils.rolling_beta(df["y"], df["x"], self.window)
 
-        positions = signals.replace(0, np.nan).ffill()
-        positions[signals == 0] = 0
-        df["position"] = positions.fillna(0)
+        # compute spread y - beta * x
+        df["spread"] = df["y"] - df["beta"] * df["x"]
 
-        df["pnl"] = df["position"].shift().fillna(0) * df["spread"].diff().fillna(0)
+        # Используем правильное имя функции `rolling_zscore`
+        df["z_score"] = math_utils.rolling_zscore(df["spread"], self.window)
+
+        # generate long/short signals: long when z_score < -threshold, short when z_score > threshold
+        df["signal"] = 0
+        df.loc[df["z_score"] > self.z_threshold, "signal"] = -1 # Продаем дорогой спред
+        df.loc[df["z_score"] < -self.z_threshold, "signal"] = 1  # Покупаем дешевый спред
+
+        # forward fill signals to maintain positions until exit
+        # (Выход происходит при появлении противоположного сигнала или возврате к "нейтральной" зоне).
+        df["position"] = df["signal"].replace(to_replace=0, method="ffill").fillna(0)
+
+        # shift position by 1 to avoid lookahead bias (входим по цене следующего периода)
+        df["position"] = df["position"].shift().fillna(0)
+
+        # compute pnl
+        df["spread_return"] = df["spread"].diff()
+        df["pnl"] = df["position"] * df["spread_return"]
+        df["cumulative_pnl"] = df["pnl"].cumsum()
 
         self.results = df
-        return df
 
-    def get_performance_metrics(self) -> dict[str, float]:
-        """Return Sharpe ratio and max drawdown of the strategy."""
+    def get_results(self) -> pd.DataFrame:
         if self.results is None:
-            raise ValueError("run() must be called before computing metrics")
-        pnl = self.results["pnl"]
-        cumulative = pnl.cumsum()
-        return {
-            "sharpe_ratio": sharpe_ratio(pnl),
-            "max_drawdown": max_drawdown(cumulative),
-        }
+            raise ValueError("Backtest not yet run")
+        return self.results[["spread", "z_score", "position", "pnl", "cumulative_pnl"]]
 
+    def get_performance_metrics(self) -> dict:
+        if self.results is None or self.results.empty:
+            raise ValueError("Backtest has not been run or produced no results")
+
+        pnl = self.results["pnl"].dropna()
+        cum_pnl = self.results["cumulative_pnl"].dropna()
+
+        # Если после dropna ничего не осталось, возвращаем нулевые метрики
+        if pnl.empty:
+            return {
+                "sharpe_ratio": 0.0,
+                "max_drawdown": 0.0,
+                "total_pnl": 0.0,
+            }
+
+        return {
+            "sharpe_ratio": performance.sharpe_ratio(pnl),
+            "max_drawdown": performance.max_drawdown(cum_pnl),
+            "total_pnl": cum_pnl.iloc[-1] if not cum_pnl.empty else 0.0,
+        }
