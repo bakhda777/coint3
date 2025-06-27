@@ -23,15 +23,11 @@ def run_full_pipeline() -> List[Dict[str, object]]:
         cfg.data_dir, cfg.backtest.timeframe, cfg.backtest.fill_limit_pct
     )
 
-    logger.info("Loading data for %s days", cfg.pair_selection.lookback_days)
-    data = handler.load_all_data_for_period(cfg.pair_selection.lookback_days)
-    if data.empty:
-        logger.warning("No data available to scan")
-        return []
-
     logger.info("Scanning for cointegrated pairs")
     pairs = find_cointegrated_pairs(
-        data, cfg.pair_selection.coint_pvalue_threshold
+        handler,
+        cfg.pair_selection.lookback_days,
+        cfg.pair_selection.coint_pvalue_threshold,
     )
     logger.info("Found %d pairs", len(pairs))
 
