@@ -9,6 +9,7 @@ from coint2.core.data_loader import DataHandler
 from coint2.engine.backtest_engine import PairBacktester
 from coint2.pipeline.orchestrator import run_full_pipeline
 from coint2.pipeline.pair_scanner import find_cointegrated_pairs
+from coint2.pipeline.walk_forward_orchestrator import run_walk_forward
 from coint2.utils.config import CONFIG
 from coint2.utils.logging_utils import get_logger
 
@@ -86,11 +87,20 @@ def run_pipeline_cmd() -> None:
     results = run_full_pipeline()
     for entry in results:
         pair = entry.get("pair")
-        if pair:
+        if isinstance(pair, tuple):
             click.echo(f"{pair[0]},{pair[1]}")
         for key, value in entry.items():
             if key != "pair":
                 click.echo(f"  {key}: {value}")
+
+
+@main.command(name="walk-forward")
+def walk_forward_cmd() -> None:
+    """Run walk-forward analysis."""
+
+    metrics = run_walk_forward()
+    for key, value in metrics.items():
+        click.echo(f"{key}: {value}")
 
 
 if __name__ == "__main__":

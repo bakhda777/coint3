@@ -22,6 +22,15 @@ class BacktestConfig(BaseModel):
     fill_limit_pct: float
 
 
+class WalkForwardConfig(BaseModel):
+    """Configuration for walk-forward analysis."""
+
+    start_date: str
+    end_date: str
+    training_period_days: int
+    testing_period_days: int
+
+
 class AppConfig(BaseModel):
     """Top-level application configuration."""
 
@@ -29,6 +38,7 @@ class AppConfig(BaseModel):
     results_dir: Path
     pair_selection: PairSelectionConfig
     backtest: BacktestConfig
+    walk_forward: WalkForwardConfig
 
 
 def load_config(path: Path) -> AppConfig:

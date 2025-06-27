@@ -1,0 +1,93 @@
+import pandas as pd
+from pathlib import Path
+
+from coint2.core.data_loader import DataHandler
+from coint2.engine.backtest_engine import PairBacktester
+from coint2.pipeline import walk_forward_orchestrator as wf
+from coint2.utils.config import AppConfig, PairSelectionConfig, BacktestConfig, WalkForwardConfig
+from coint2.core import performance
+
+
+def create_dataset(base_dir: Path) -> None:
+    idx = pd.date_range("2021-01-01", periods=12, freq="D")
+    a = pd.Series(range(len(idx)), index=idx)
+    b = a + 0.1
+
+    for sym, series in [("A", a), ("B", b)]:
+        part_dir = base_dir / f"symbol={sym}" / "year=2021" / "month=01"
+        part_dir.mkdir(parents=True, exist_ok=True)
+        df = pd.DataFrame({"timestamp": idx, "close": series})
+        df.to_parquet(part_dir / "data.parquet")
+
+
+def manual_walk_forward(handler: DataHandler, cfg: AppConfig) -> dict:
+    overall = pd.Series(dtype=float)
+    current = pd.Timestamp(cfg.walk_forward.start_date)
+    end = pd.Timestamp(cfg.walk_forward.end_date)
+    while current < end:
+        train_end = current + pd.Timedelta(days=cfg.walk_forward.training_period_days)
+        test_start = train_end
+        test_end = test_start + pd.Timedelta(days=cfg.walk_forward.testing_period_days)
+        if test_end > end:
+            break
+        data = handler.load_pair_data("A", "B", test_start, test_end)
+        bt = PairBacktester(
+            data,
+            window=cfg.backtest.rolling_window,
+            z_threshold=cfg.backtest.zscore_threshold,
+        )
+        bt.run()
+        overall = pd.concat([overall, bt.get_results()["pnl"]])
+        current = test_start
+    overall = overall.dropna()
+    if overall.empty:
+        return {"sharpe_ratio": 0.0, "max_drawdown": 0.0, "total_pnl": 0.0}
+    cum = overall.cumsum()
+    return {
+        "sharpe_ratio": performance.sharpe_ratio(overall),
+        "max_drawdown": performance.max_drawdown(cum),
+        "total_pnl": cum.iloc[-1],
+    }
+
+
+def test_walk_forward(monkeypatch, tmp_path: Path) -> None:
+    create_dataset(tmp_path)
+    cfg = AppConfig(
+        data_dir=tmp_path,
+        results_dir=tmp_path / "results",
+        pair_selection=PairSelectionConfig(
+            lookback_days=5, coint_pvalue_threshold=0.05
+        ),
+        backtest=BacktestConfig(
+            timeframe="1d",
+            rolling_window=3,
+            zscore_threshold=1.0,
+            fill_limit_pct=0.0,
+        ),
+        walk_forward=WalkForwardConfig(
+            start_date="2021-01-01",
+            end_date="2021-01-11",
+            training_period_days=2,
+            testing_period_days=2,
+        ),
+    )
+
+    monkeypatch.setattr(wf, "CONFIG", cfg)
+
+    calls = []
+
+    def fake_find_pairs(handler, start, end, thr):
+        calls.append((pd.Timestamp(start), pd.Timestamp(end)))
+        return [("A", "B")]
+
+    monkeypatch.setattr(wf, "find_cointegrated_pairs", fake_find_pairs)
+
+    metrics = wf.run_walk_forward()
+
+    expected_metrics = manual_walk_forward(
+        DataHandler(cfg.data_dir, cfg.backtest.timeframe, cfg.backtest.fill_limit_pct),
+        cfg,
+    )
+
+    assert metrics == expected_metrics
+    assert len(calls) == 4
