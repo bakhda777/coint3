@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "coint2"
+name = "coint2" # Оставляем оригинальное имя проекта
 version = "0.1.0"
 description = "Cointegration backtest framework"
 authors = ["Your Name <you@example.com>"]
@@ -10,8 +10,11 @@ python = "^3.10"
 click = "*"
 joblib = "*"
 pydantic = "*"
-# ↓↓↓ ЭТУ СТРОКУ МЫ ДОБАВИЛИ ИЗ ВЕРСИИ CODEX ↓↓↓
 pyyaml = "*" 
+# ↓↓↓ ЭТИ ЗАВИСИМОСТИ МЫ БЕРЕМ ИЗ ВЕТКИ CODEX ↓↓↓
+numpy = "*"
+pandas = "*"
+scipy = "*"
 
 [tool.poetry.dev-dependencies]
 pytest = "*"
