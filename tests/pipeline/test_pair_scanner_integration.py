@@ -32,5 +32,7 @@ def test_find_cointegrated_pairs(tmp_path: Path) -> None:
         if pval < 0.05:
             expected.append((s1, s2))
 
-    pairs = find_cointegrated_pairs(handler, lookback_days=20, p_value_threshold=0.05)
+    start = data.index.min()
+    end = data.index.max()
+    pairs = find_cointegrated_pairs(handler, start, end, p_value_threshold=0.05)
     assert set(pairs) == set(expected)

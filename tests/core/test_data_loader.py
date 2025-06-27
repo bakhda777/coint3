@@ -36,7 +36,12 @@ def test_load_pair_data(tmp_path: Path) -> None:
     create_dataset(tmp_path)
     handler = DataHandler(tmp_path, "1d", fill_limit_pct=0.1)
 
-    result = handler.load_pair_data("AAA", "BBB")
+    result = handler.load_pair_data(
+        "AAA",
+        "BBB",
+        pd.Timestamp("2021-01-02"),
+        pd.Timestamp("2021-01-04"),
+    )
 
     pdf = pd.read_parquet(tmp_path, engine="pyarrow")
     pdf = pdf[pdf["symbol"].isin(["AAA", "BBB"])]
@@ -46,6 +51,7 @@ def test_load_pair_data(tmp_path: Path) -> None:
     limit = int(len(expected) * 0.1)
     expected = expected.ffill(limit=limit).bfill(limit=limit)
     expected = expected[["AAA", "BBB"]].dropna()
+    expected = expected.loc[pd.Timestamp("2021-01-02"): pd.Timestamp("2021-01-04")]
 
     pd.testing.assert_frame_equal(result, expected)
 

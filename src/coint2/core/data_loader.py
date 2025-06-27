@@ -63,8 +63,14 @@ class DataHandler:
         wide = wide.sort_index()
         return wide
 
-    def load_pair_data(self, symbol1: str, symbol2: str) -> pd.DataFrame:
-        """Load and align data for two symbols."""
+    def load_pair_data(
+        self,
+        symbol1: str,
+        symbol2: str,
+        start_date: pd.Timestamp,
+        end_date: pd.Timestamp,
+    ) -> pd.DataFrame:
+        """Load and align data for two symbols within the given date range."""
         ddf = self._load_full_dataset()
 
         pair_ddf = ddf[ddf["symbol"].isin([symbol1, symbol2])]
@@ -74,6 +80,14 @@ class DataHandler:
             return pd.DataFrame()
 
         pair_pdf["timestamp"] = pd.to_datetime(pair_pdf["timestamp"])
+        mask = (pair_pdf["timestamp"] >= pd.Timestamp(start_date)) & (
+            pair_pdf["timestamp"] <= pd.Timestamp(end_date)
+        )
+        pair_pdf = pair_pdf.loc[mask]
+
+        if pair_pdf.empty:
+            return pd.DataFrame()
+
         wide_df = pair_pdf.pivot_table(index="timestamp", columns="symbol", values="close")
 
         if wide_df.empty:
