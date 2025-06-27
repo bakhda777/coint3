@@ -17,6 +17,8 @@ scipy = "*"
 # ↓↓↓ ЭТИ ЗАВИСИМОСТИ МЫ БЕРЕМ ИЗ ВЕТКИ CODEX ↓↓↓
 pyarrow = "*"
 statsmodels = "*"
+dask = {extras = ["dataframe"], version = "*"} # Устанавливаем dask с поддержкой DataFrame
+dask-expr = "*" # Нужен для read_parquet в новых версиях
 
 [tool.poetry.dev-dependencies]
 pytest = "*"
