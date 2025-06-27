@@ -1,0 +1,23 @@
+name: CI
+on: [push, pull_request]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+      - name: Install dependencies
+        run: |
+          pip install poetry
+          poetry install
+      - name: Run ruff
+        run: poetry run ruff src tests
+      - name: Run mypy
+        run: poetry run mypy src
+      - name: Run pytest
+        run: poetry run pytest
+      - name: Bench rolling_beta
+        run: echo "benchmark placeholder"
