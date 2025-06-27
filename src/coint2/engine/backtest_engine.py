@@ -1,5 +1,4 @@
 import pandas as pd
-# Импортируем модули, которые уже есть в main
 from ..core import math_utils
 from ..core import performance
 
@@ -28,6 +27,11 @@ class PairBacktester:
         """Run backtest and store results in ``self.results``."""
         # Улучшение: делаем код независимым от имен колонок,
         # переименовывая их в 'y' и 'x' для удобства.
+        if self.pair_data.empty or len(self.pair_data.columns) < 2:
+            # Создаем пустой DataFrame с нужными колонками, чтобы избежать ошибок дальше
+            self.results = pd.DataFrame(columns=["spread", "z_score", "position", "pnl", "cumulative_pnl"])
+            return
+
         df = self.pair_data.rename(columns={
             self.pair_data.columns[0]: 'y',
             self.pair_data.columns[1]: 'x'
@@ -39,7 +43,7 @@ class PairBacktester:
         # compute spread y - beta * x
         df["spread"] = df["y"] - df["beta"] * df["x"]
 
-        # ИСПРАВЛЕНИЕ: Используем правильное имя функции `rolling_zscore` из `main`
+        # Используем правильное имя функции `rolling_zscore`
         df["z_score"] = math_utils.rolling_zscore(df["spread"], self.window)
 
         # generate long/short signals: long when z_score < -threshold, short when z_score > threshold
@@ -48,8 +52,7 @@ class PairBacktester:
         df.loc[df["z_score"] < -self.z_threshold, "signal"] = 1  # Покупаем дешевый спред
 
         # forward fill signals to maintain positions until exit
-        # ПРИМЕЧАНИЕ: Это простая логика удержания. Выход происходит при появлении
-        # противоположного сигнала или возврате к "нейтральной" зоне.
+        # (Выход происходит при появлении противоположного сигнала или возврате к "нейтральной" зоне).
         df["position"] = df["signal"].replace(to_replace=0, method="ffill").fillna(0)
 
         # shift position by 1 to avoid lookahead bias (входим по цене следующего периода)
@@ -69,9 +72,19 @@ class PairBacktester:
 
     def get_performance_metrics(self) -> dict:
         if self.results is None or self.results.empty:
-            raise ValueError("Backtest not yet run")
+            raise ValueError("Backtest has not been run or produced no results")
+
         pnl = self.results["pnl"].dropna()
         cum_pnl = self.results["cumulative_pnl"].dropna()
+
+        # Если после dropna ничего не осталось, возвращаем нулевые метрики
+        if pnl.empty:
+            return {
+                "sharpe_ratio": 0.0,
+                "max_drawdown": 0.0,
+                "total_pnl": 0.0,
+            }
+
         return {
             "sharpe_ratio": performance.sharpe_ratio(pnl),
             "max_drawdown": performance.max_drawdown(cum_pnl),

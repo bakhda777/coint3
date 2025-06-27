@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import pandas as pd
+import pandas as pd  # type: ignore
 
 
 def rolling_beta(y: pd.Series, x: pd.Series, window: int) -> pd.Series:
