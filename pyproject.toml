@@ -1,0 +1,31 @@
+[tool.poetry]
+name = "coint2" # Оставляем оригинальное имя проекта
+version = "0.1.0"
+description = "Cointegration backtest framework"
+authors = ["Your Name <you@example.com>"]
+license = "MIT"
+
+[tool.poetry.dependencies]
+python = "^3.10"
+click = "*"
+joblib = "*"
+pydantic = "*"
+pyyaml = "*" 
+numpy = "*"
+pandas = "*"
+scipy = "*"
+# ↓↓↓ ЭТИ ЗАВИСИМОСТИ МЫ БЕРЕМ ИЗ ВЕТКИ CODEX ↓↓↓
+pyarrow = "*"
+statsmodels = "*"
+
+[tool.poetry.dev-dependencies]
+pytest = "*"
+ruff = "*"
+mypy = "*"
+
+[tool.poetry.scripts]
+coint2 = "coint2.cli:main"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
