@@ -90,8 +90,11 @@ def find_cointegrated_pairs(
     if normalized.empty or len(normalized.columns) < 2:
         return []
 
-    ssd = math_utils.calculate_ssd(normalized)
-    top_pairs = ssd.head(cfg.pair_selection.ssd_top_n).index.tolist()
+    ssd = math_utils.calculate_ssd(
+        normalized,
+        top_k=cfg.pair_selection.ssd_top_n,
+    )
+    top_pairs = ssd.index.tolist()
 
     # Stage 2: tradability filter
     lazy_tradable = []

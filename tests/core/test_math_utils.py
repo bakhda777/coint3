@@ -41,27 +41,36 @@ def test_rolling_zscore_basic():
     pd.testing.assert_series_equal(z, expected)
 
 
-def test_calculate_ssd():
-    df = pd.DataFrame(
+def _brute_force_ssd(df: pd.DataFrame) -> pd.Series:
+    data = df.to_numpy()
+    dot = data.T @ data
+    sum_sq = np.diag(dot)
+    ssd = sum_sq[:, None] + sum_sq[None, :] - 2 * dot
+    iu, ju = np.triu_indices_from(ssd, k=1)
+    idx = pd.MultiIndex.from_arrays([df.columns[iu], df.columns[ju]])
+    values = ssd[iu, ju]
+    return pd.Series(values, index=idx).sort_values()
+
+
+def test_calculate_ssd_block_based():
+    norm_prices = pd.DataFrame(
         {
             "A": [0, 0, 0],
             "B": [1, 1, 1],
             "C": [0, 2, 4],
+            "D": [0, 1, 2],
         }
     )
 
-    result = calculate_ssd(df)
+    expected = _brute_force_ssd(norm_prices)
 
-    expected_index = pd.MultiIndex.from_tuples(
-        [
-            ("A", "B"),
-            ("B", "C"),
-            ("A", "C"),
-        ]
-    )
-    expected = pd.Series([3, 11, 20], index=expected_index)
+    result = calculate_ssd(norm_prices, top_k=2, block_size=2)
+    assert len(result) == 2
+    pd.testing.assert_series_equal(result, expected.head(2))
 
-    pd.testing.assert_series_equal(result, expected)
+    single = calculate_ssd(norm_prices, top_k=1, block_size=2)
+    assert len(single) == 1
+    pd.testing.assert_series_equal(single, expected.head(1))
 
 
 def test_calculate_half_life_deterministic() -> None:
