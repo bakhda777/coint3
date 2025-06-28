@@ -6,6 +6,8 @@ from coint2.core.math_utils import (
     rolling_beta,
     rolling_zscore,
     calculate_ssd,
+    calculate_half_life,
+    count_mean_crossings,
 )
 
 
@@ -58,3 +60,16 @@ def test_calculate_ssd():
     expected = pd.Series([3, 11, 20], index=expected_index)
 
     pd.testing.assert_series_equal(result, expected)
+
+
+def test_calculate_half_life_deterministic() -> None:
+    phi = 0.8
+    series = pd.Series([phi**i for i in range(10)])
+    expected = -np.log(2) / (phi - 1)
+    result = calculate_half_life(series)
+    assert np.isclose(result, expected)
+
+
+def test_count_mean_crossings() -> None:
+    series = pd.Series([1, -1, 1, -1, 1, -1])
+    assert count_mean_crossings(series) == 5
