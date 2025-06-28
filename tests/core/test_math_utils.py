@@ -8,6 +8,8 @@ from coint2.core.math_utils import (
     calculate_ssd,
     calculate_half_life,
     count_mean_crossings,
+    half_life_numba,
+    mean_crossings_numba,
 )
 
 
@@ -73,3 +75,15 @@ def test_calculate_half_life_deterministic() -> None:
 def test_count_mean_crossings() -> None:
     series = pd.Series([1, -1, 1, -1, 1, -1])
     assert count_mean_crossings(series) == 5
+
+
+def test_half_life_numba():
+    series = np.array([10.0, 9.0, 8.0, 7.0, 6.0, 5.0])
+    result = half_life_numba(series)
+    assert np.isclose(result, 1.0)
+
+
+def test_mean_crossings_numba():
+    series = np.array([1, 2, 1, 0, -1, -2, -1, 0, 1])
+    result = mean_crossings_numba(series)
+    assert result == 2

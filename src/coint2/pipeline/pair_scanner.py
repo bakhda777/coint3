@@ -30,11 +30,12 @@ def _test_pair_for_tradability(
     beta = y.cov(x) / x.var()
     spread = y - beta * x
 
-    half_life = math_utils.calculate_half_life(spread)
+    spread_np = spread.to_numpy()
+    half_life = math_utils.half_life_numba(spread_np)
     if half_life < min_half_life or half_life > max_half_life:
         return None
 
-    crossings = math_utils.count_mean_crossings(spread)
+    crossings = math_utils.mean_crossings_numba(spread_np)
     if crossings < min_crossings:
         return None
 
