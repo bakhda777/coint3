@@ -74,7 +74,7 @@ def run_walk_forward(cfg: AppConfig) -> Dict[str, float]:
 
         aggregated_pnl = pd.concat([aggregated_pnl, step_pnl])
 
-        current_date = testing_start
+        current_date = testing_end
 
     aggregated_pnl = aggregated_pnl.dropna()
     if aggregated_pnl.empty:
