@@ -58,14 +58,19 @@ class DataHandler:
 
         start_date = end_date - pd.Timedelta(days=lookback_days)
         filtered_ddf = ddf[ddf["timestamp"] >= start_date]
-        filtered_pdf = filtered_ddf.compute()
-        if filtered_pdf.empty:
+
+        # Perform pivot table operation lazily on the Dask DataFrame
+        wide_ddf = filtered_ddf.pivot_table(
+            index="timestamp", columns="symbol", values="close"
+        )
+
+        # Compute after pivoting to minimize memory usage
+        wide_pdf = wide_ddf.compute()
+        if wide_pdf.empty:
             return pd.DataFrame()
 
-        filtered_pdf["timestamp"] = pd.to_datetime(filtered_pdf["timestamp"])
-        wide = filtered_pdf.pivot_table(index="timestamp", columns="symbol", values="close")
-        wide = wide.sort_index()
-        return wide
+        wide_pdf = wide_pdf.sort_index()
+        return wide_pdf
 
     def load_pair_data(
         self,
