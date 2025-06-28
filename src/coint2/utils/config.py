@@ -56,6 +56,7 @@ class AppConfig(BaseModel):
     pair_selection: PairSelectionConfig
     backtest: BacktestConfig
     walk_forward: WalkForwardConfig
+    max_shards: int | None = None
 
 
 def load_config(path: Path) -> AppConfig:

@@ -25,3 +25,5 @@ walk_forward:
   end_date: "2022-12-31"
   training_period_days: 60
   testing_period_days: 30
+max_shards: null
+  
