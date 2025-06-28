@@ -7,6 +7,7 @@ import numpy as np
 import logging
 
 from coint2.utils.config import AppConfig
+from coint2.utils import empty_ddf
 
 # Настройка логгера
 logger = logging.getLogger(__name__)
@@ -48,7 +49,7 @@ class DataHandler:
             return self._all_data_cache
 
         if not self.data_dir.exists():
-            self._all_data_cache = dd.from_pandas(pd.DataFrame(), npartitions=1)
+            self._all_data_cache = empty_ddf()
             return self._all_data_cache
 
         try:
@@ -79,7 +80,7 @@ class DataHandler:
                 parquet_files = glob.glob(str(self.data_dir) + "/**/data.parquet", recursive=True)
                 if not parquet_files:
                     print(f"Не найдено ни одного parquet файла в {self.data_dir}")
-                    return dd.DataFrame()
+                    return empty_ddf()
                 
                 print(f"Найдено {len(parquet_files)} файлов parquet")
                 
@@ -174,7 +175,7 @@ class DataHandler:
                     
                 if not dfs:
                     print("Не удалось загрузить ни один файл")
-                    return dd.from_pandas(pd.DataFrame(), npartitions=1)
+                    return empty_ddf()
                     
                 try:
                     # Объединяем все Dask DataFrame в один
@@ -183,12 +184,12 @@ class DataHandler:
                     return combined_ddf
                 except Exception as concat_error:
                     print(f"Ошибка при объединении DataFrame: {str(concat_error)}")
-                    return dd.from_pandas(pd.DataFrame(), npartitions=1)
+                    return empty_ddf()
                     
             except Exception as e2:
                 print(f"Ошибка при использовании запасного варианта: {str(e2)}")
                 # Если и запасной вариант не сработал, возвращаем пустой фрейм
-                return dd.from_pandas(pd.DataFrame(), npartitions=1)
+                return empty_ddf()
 
     def load_all_data_for_period(self, lookback_days: int) -> pd.DataFrame:
         """Load close prices for all symbols for the given lookback period."""
