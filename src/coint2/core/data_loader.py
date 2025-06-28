@@ -7,6 +7,7 @@ import numpy as np
 import logging
 
 from coint2.utils.config import AppConfig
+from coint2.utils import empty_ddf
 
 # Настройка логгера
 logger = logging.getLogger(__name__)
@@ -48,7 +49,7 @@ class DataHandler:
             return self._all_data_cache
 
         if not self.data_dir.exists():
-            self._all_data_cache = dd.from_pandas(pd.DataFrame(), npartitions=1)
+            self._all_data_cache = empty_ddf()
             return self._all_data_cache
 
         try:
@@ -80,8 +81,8 @@ class DataHandler:
                 parquet_files = glob.glob(str(self.data_dir) + "/**/data.parquet", recursive=True)
                 if not parquet_files:
                     print(f"Не найдено ни одного parquet файла в {self.data_dir}")
-                    self._all_data_cache = dd.DataFrame()
-                    return self._all_data_cache
+
+                    return empty_ddf()
                 
                 print(f"Найдено {len(parquet_files)} файлов parquet")
                 
