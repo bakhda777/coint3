@@ -23,6 +23,8 @@ def manual_backtest(
     z_threshold: float,
     commission_pct: float,
     slippage_pct: float,
+    capital_at_risk: float,
+    stop_loss_multiplier: float,
 ) -> pd.DataFrame:
     """Эталонная реализация логики бэктеста для проверки."""
     df = df.copy()
@@ -34,17 +36,63 @@ def manual_backtest(
     else:
         df["z_score"] = (df["spread"] - mean) / std
     
-    df["signal"] = 0
-    df.loc[df["z_score"] > z_threshold, "signal"] = -1
-    df.loc[df["z_score"] < -z_threshold, "signal"] = 1
-    df["position"] = df["signal"].replace(to_replace=0, method="ffill").fillna(0)
-    df["position"] = df["position"].shift(1).fillna(0)
-    df["trades"] = df["position"].diff().abs()
-    df["gross_pnl"] = df["position"] * df["spread"].diff()
+    df["position"] = 0.0
+    df["trades"] = 0.0
+    df["costs"] = 0.0
+    df["pnl"] = 0.0
+
     total_cost_pct = commission_pct + slippage_pct
-    trade_value = df[y_col] + (df[x_col] * abs(beta))
-    df["costs"] = df["trades"] * trade_value * total_cost_pct
-    df["pnl"] = df["gross_pnl"] - df["costs"]
+
+    position = 0.0
+    entry_z = 0.0
+    stop_loss_z = 0.0
+
+    for i in range(1, len(df)):
+        spread_prev = df["spread"].iat[i - 1]
+        spread_curr = df["spread"].iat[i]
+        z_curr = df["z_score"].iat[i]
+
+        pnl = position * (spread_curr - spread_prev)
+
+        new_position = position
+
+        if position > 0 and z_curr <= stop_loss_z:
+            new_position = 0.0
+        elif position < 0 and z_curr >= stop_loss_z:
+            new_position = 0.0
+
+        signal = 0
+        if z_curr > z_threshold:
+            signal = -1
+        elif z_curr < -z_threshold:
+            signal = 1
+
+        if new_position == 0 and signal != 0:
+            entry_z = z_curr
+            stop_loss_z = float(np.sign(entry_z) * stop_loss_multiplier)
+            stop_loss_price = mean + stop_loss_z * std
+            risk_per_unit = abs(spread_curr - stop_loss_price)
+            size = capital_at_risk / risk_per_unit if risk_per_unit != 0 else 0.0
+            new_position = signal * size
+        elif new_position != 0 and signal != 0 and np.sign(new_position) != signal:
+            entry_z = z_curr
+            stop_loss_z = float(np.sign(entry_z) * stop_loss_multiplier)
+            stop_loss_price = mean + stop_loss_z * std
+            risk_per_unit = abs(spread_curr - stop_loss_price)
+            size = capital_at_risk / risk_per_unit if risk_per_unit != 0 else 0.0
+            new_position = signal * size
+
+        trades = abs(new_position - position)
+        trade_value = df[y_col].iat[i] + abs(beta) * df[x_col].iat[i]
+        costs = trades * trade_value * total_cost_pct
+
+        df.iat[i, df.columns.get_loc("position")] = new_position
+        df.iat[i, df.columns.get_loc("trades")] = trades
+        df.iat[i, df.columns.get_loc("costs")] = costs
+        df.iat[i, df.columns.get_loc("pnl")] = pnl - costs
+
+        position = new_position
+
     df["cumulative_pnl"] = df["pnl"].cumsum()
     return df
 
@@ -73,6 +121,8 @@ def test_backtester_outputs():
         commission_pct=commission,
         slippage_pct=slippage,
         annualizing_factor=annualizing_factor,
+        capital_at_risk=100.0,
+        stop_loss_multiplier=2.0,
     )
     bt.run()
     result = bt.get_results()
@@ -86,6 +136,8 @@ def test_backtester_outputs():
         z_threshold,
         commission_pct=commission,
         slippage_pct=slippage,
+        capital_at_risk=100.0,
+        stop_loss_multiplier=2.0,
     )
     expected_for_comparison = expected[["spread", "z_score", "position", "pnl", "cumulative_pnl"]]
     
@@ -127,6 +179,8 @@ def test_zero_std_handling() -> None:
         commission_pct=0.001,
         slippage_pct=0.0005,
         annualizing_factor=365,
+        capital_at_risk=100.0,
+        stop_loss_multiplier=2.0,
     )
     bt.run()
     result = bt.get_results()
@@ -139,6 +193,8 @@ def test_zero_std_handling() -> None:
         1.0,
         commission_pct=0.001,
         slippage_pct=0.0005,
+        capital_at_risk=100.0,
+        stop_loss_multiplier=2.0,
     )
     expected_for_comparison = expected[["spread", "z_score", "position", "pnl", "cumulative_pnl"]]
 

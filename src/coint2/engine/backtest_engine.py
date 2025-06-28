@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from ..core import performance
 
 
@@ -15,6 +16,8 @@ class PairBacktester:
         commission_pct: float = 0.0,
         slippage_pct: float = 0.0,
         annualizing_factor: int = 365,
+        capital_at_risk: float = 1.0,
+        stop_loss_multiplier: float = 2.0,
     ) -> None:
         """Initialize backtester with pre-computed parameters.
 
@@ -41,14 +44,15 @@ class PairBacktester:
         self.commission_pct = commission_pct
         self.slippage_pct = slippage_pct
         self.annualizing_factor = annualizing_factor
+        self.capital_at_risk = capital_at_risk
+        self.stop_loss_multiplier = stop_loss_multiplier
 
     def run(self) -> None:
         """Run backtest and store results in ``self.results``."""
-        # Улучшение: делаем код независимым от имен колонок,
-        # переименовывая их в 'y' и 'x' для удобства.
         if self.pair_data.empty or len(self.pair_data.columns) < 2:
-            # Создаем пустой DataFrame с нужными колонками, чтобы избежать ошибок дальше
-            self.results = pd.DataFrame(columns=["spread", "z_score", "position", "pnl", "cumulative_pnl"])
+            self.results = pd.DataFrame(
+                columns=["spread", "z_score", "position", "pnl", "cumulative_pnl"]
+            )
             return
 
         df = self.pair_data.rename(
@@ -58,34 +62,70 @@ class PairBacktester:
             }
         )
 
-        # compute spread using pre-calculated beta
         df["spread"] = df["y"] - self.beta * df["x"]
 
-        # z-score using fixed mean and std from training period
         if self.std == 0:
             df["z_score"] = 0.0
         else:
             df["z_score"] = (df["spread"] - self.mean) / self.std
 
-        # generate long/short signals: long when z_score < -threshold, short when z_score > threshold
-        df["signal"] = 0
-        df.loc[df["z_score"] > self.z_threshold, "signal"] = -1 # Продаем дорогой спред
-        df.loc[df["z_score"] < -self.z_threshold, "signal"] = 1  # Покупаем дешевый спред
+        df["position"] = 0.0
+        df["trades"] = 0.0
+        df["costs"] = 0.0
+        df["pnl"] = 0.0
 
-        # forward fill signals to maintain positions until exit
-        # (Выход происходит при появлении противоположного сигнала или возврате к "нейтральной" зоне).
-        df["position"] = df["signal"].replace(to_replace=0, method="ffill").fillna(0)
-
-        # shift position by 1 to avoid lookahead bias (входим по цене следующего периода)
-        df["position"] = df["position"].shift().fillna(0)
-
-        # compute pnl with transaction costs
-        df["trades"] = df["position"].diff().abs()
-        df["gross_pnl"] = df["position"] * df["spread"].diff()
         total_cost_pct = self.commission_pct + self.slippage_pct
-        trade_value = df["y"] + (df["x"] * abs(self.beta))
-        df["costs"] = df["trades"] * trade_value * total_cost_pct
-        df["pnl"] = df["gross_pnl"] - df["costs"]
+
+        position = 0.0
+        entry_z = 0.0
+        stop_loss_z = 0.0
+
+        for i in range(1, len(df)):
+            spread_prev = df["spread"].iat[i - 1]
+            spread_curr = df["spread"].iat[i]
+            z_curr = df["z_score"].iat[i]
+
+            pnl = position * (spread_curr - spread_prev)
+
+            new_position = position
+
+            if position > 0 and z_curr <= stop_loss_z:
+                new_position = 0.0
+            elif position < 0 and z_curr >= stop_loss_z:
+                new_position = 0.0
+
+            signal = 0
+            if z_curr > self.z_threshold:
+                signal = -1
+            elif z_curr < -self.z_threshold:
+                signal = 1
+
+            if new_position == 0 and signal != 0:
+                entry_z = z_curr
+                stop_loss_z = float(np.sign(entry_z) * self.stop_loss_multiplier)
+                stop_loss_price = self.mean + stop_loss_z * self.std
+                risk_per_unit = abs(spread_curr - stop_loss_price)
+                size = self.capital_at_risk / risk_per_unit if risk_per_unit != 0 else 0.0
+                new_position = signal * size
+            elif new_position != 0 and signal != 0 and np.sign(new_position) != signal:
+                entry_z = z_curr
+                stop_loss_z = float(np.sign(entry_z) * self.stop_loss_multiplier)
+                stop_loss_price = self.mean + stop_loss_z * self.std
+                risk_per_unit = abs(spread_curr - stop_loss_price)
+                size = self.capital_at_risk / risk_per_unit if risk_per_unit != 0 else 0.0
+                new_position = signal * size
+
+            trades = abs(new_position - position)
+            trade_value = df["y"].iat[i] + abs(self.beta) * df["x"].iat[i]
+            costs = trades * trade_value * total_cost_pct
+
+            df.iat[i, df.columns.get_loc("position")] = new_position
+            df.iat[i, df.columns.get_loc("trades")] = trades
+            df.iat[i, df.columns.get_loc("costs")] = costs
+            df.iat[i, df.columns.get_loc("pnl")] = pnl - costs
+
+            position = new_position
+
         df["cumulative_pnl"] = df["pnl"].cumsum()
 
         self.results = df
