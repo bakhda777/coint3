@@ -28,7 +28,7 @@ def create_dataset(base_dir: Path) -> None:
         df.to_parquet(part_dir / "data.parquet")
 
 
-def manual_walk_forward(handler: DataHandler, cfg: AppConfigWithPortfolio) -> dict:
+def manual_walk_forward(handler: DataHandler, cfg: AppConfig) -> dict:
     overall = pd.Series(dtype=float)
     equity = cfg.portfolio.initial_capital
     current = pd.Timestamp(cfg.walk_forward.start_date)
@@ -93,7 +93,7 @@ def manual_walk_forward(handler: DataHandler, cfg: AppConfigWithPortfolio) -> di
 
 def test_walk_forward(monkeypatch, tmp_path: Path) -> None:
     create_dataset(tmp_path)
-    cfg = AppConfigWithPortfolio(
+    cfg = AppConfig(
         data_dir=tmp_path,
         results_dir=tmp_path / "results",
         portfolio=PortfolioConfig(
@@ -102,7 +102,12 @@ def test_walk_forward(monkeypatch, tmp_path: Path) -> None:
             max_active_positions=5,
         ),
         pair_selection=PairSelectionConfig(
-            lookback_days=5, coint_pvalue_threshold=0.05, ssd_top_n=1
+            lookback_days=5,
+            coint_pvalue_threshold=0.05,
+            ssd_top_n=1,
+            min_half_life_days=1,
+            max_half_life_days=30,
+            min_mean_crossings=12,
         ),
         backtest=BacktestConfig(
             timeframe="1d",
@@ -119,11 +124,6 @@ def test_walk_forward(monkeypatch, tmp_path: Path) -> None:
             end_date="2021-01-11",
             training_period_days=2,
             testing_period_days=2,
-        ),
-        portfolio=PortfolioConfig(
-            initial_capital=1000.0,
-            risk_per_trade_pct=0.1,
-            max_active_positions=1,
         ),
     )
 

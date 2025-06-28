@@ -35,6 +35,9 @@ def test_load_all_data_for_period(tmp_path: Path) -> None:
             lookback_days=1,
             coint_pvalue_threshold=0.05,
             ssd_top_n=1,
+            min_half_life_days=1,
+            max_half_life_days=30,
+            min_mean_crossings=12,
         ),
         backtest=BacktestConfig(
             timeframe="1d",
@@ -83,6 +86,9 @@ def test_load_pair_data(tmp_path: Path) -> None:
             lookback_days=1,
             coint_pvalue_threshold=0.05,
             ssd_top_n=1,
+            min_half_life_days=1,
+            max_half_life_days=30,
+            min_mean_crossings=12,
         ),
         backtest=BacktestConfig(
             timeframe="1d",
@@ -137,6 +143,9 @@ def test_load_and_normalize_data(tmp_path: Path) -> None:
             lookback_days=1,
             coint_pvalue_threshold=0.05,
             ssd_top_n=1,
+            min_half_life_days=1,
+            max_half_life_days=30,
+            min_mean_crossings=12,
         ),
         backtest=BacktestConfig(
             timeframe="1d",
@@ -196,6 +205,9 @@ def test_clear_cache(tmp_path: Path) -> None:
             lookback_days=1,
             coint_pvalue_threshold=0.05,
             ssd_top_n=1,
+            min_half_life_days=1,
+            max_half_life_days=30,
+            min_mean_crossings=12,
         ),
         backtest=BacktestConfig(
             timeframe="1d",

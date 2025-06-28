@@ -1,7 +1,7 @@
 from pathlib import Path
 
 from coint2.utils.config import AppConfig, load_config
-from coint2.utils.config import BacktestConfig, PortfolioConfig
+from coint2.utils.config import BacktestConfig
 from pydantic import ValidationError
 import pytest
 
@@ -12,6 +12,10 @@ def test_load_config():
     cfg = load_config(root / "configs" / "main.yaml")
     assert isinstance(cfg, AppConfig)
     assert cfg.pair_selection.lookback_days == 90
+    assert cfg.pair_selection.ssd_top_n == 10000
+    assert cfg.pair_selection.min_half_life_days == 1
+    assert cfg.pair_selection.max_half_life_days == 30
+    assert cfg.pair_selection.min_mean_crossings == 12
     assert cfg.backtest.rolling_window == 30
     assert cfg.backtest.stop_loss_multiplier == 3.0
     assert cfg.backtest.commission_pct == 0.001

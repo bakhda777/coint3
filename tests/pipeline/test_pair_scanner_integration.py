@@ -37,7 +37,12 @@ def test_find_cointegrated_pairs(tmp_path: Path) -> None:
             max_active_positions=5,
         ),
         pair_selection=PairSelectionConfig(
-            lookback_days=20, coint_pvalue_threshold=0.05, ssd_top_n=1
+            lookback_days=20,
+            coint_pvalue_threshold=0.05,
+            ssd_top_n=1,
+            min_half_life_days=1,
+            max_half_life_days=30,
+            min_mean_crossings=12,
         ),
         backtest=BacktestConfig(
             timeframe="1d",

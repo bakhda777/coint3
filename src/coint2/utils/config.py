@@ -12,6 +12,9 @@ class PairSelectionConfig(BaseModel):
     lookback_days: int
     coint_pvalue_threshold: float
     ssd_top_n: int
+    min_half_life_days: int
+    max_half_life_days: int
+    min_mean_crossings: int
 
 
 class PortfolioConfig(BaseModel):

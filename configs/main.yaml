@@ -7,7 +7,10 @@ portfolio:
 pair_selection:
   lookback_days: 90
   coint_pvalue_threshold: 0.05
-  ssd_top_n: 100
+  ssd_top_n: 10000
+  min_half_life_days: 1    # Минимальный период полураспада в днях
+  max_half_life_days: 30   # Максимальный период полураспада в днях
+  min_mean_crossings: 12   # Не менее 12 пересечений среднего за период калибровки
 backtest:
   timeframe: "1d"
   rolling_window: 30
