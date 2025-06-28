@@ -145,7 +145,7 @@ class DataHandler:
                                 is_15min = all(minute in expected_minutes for minute in minutes_count.index)
                                 print(f"DEBUG: Данные соответствуют 15-минутным интервалам: {is_15min}")
                             else:
-                                print(f"DEBUG: Файл содержит слишком мало записей для анализа интервалов")
+                                print("DEBUG: Файл содержит слишком мало записей для анализа интервалов")
                         
                         # Преобразуем timestamp в datetime для всех файлов, если это число
                         if not file_df.empty and isinstance(file_df['timestamp'].iloc[0], (int, float, np.integer, np.floating)):
@@ -183,7 +183,7 @@ class DataHandler:
                 try:
                     # Объединяем все Dask DataFrame в один
                     combined_ddf = dd.concat(dfs)
-                    print(f"Успешно создан объединенный Dask DataFrame")
+                    print("Успешно создан объединенный Dask DataFrame")
                     self._all_data_cache = combined_ddf
                     return combined_ddf
                 except Exception as concat_error:
@@ -219,13 +219,14 @@ class DataHandler:
         # Фильтруем по дате
         filtered_ddf = ddf[ddf["timestamp"] >= start_date]
 
-        # Преобразуем в широкий формат с символами в столбцах
-        wide_ddf = filtered_ddf.pivot_table(
+        # Вычисляем отфильтрованные данные и выполняем pivot уже в pandas
+        filtered_df = filtered_ddf.compute()
+        if filtered_df.empty:
+            return pd.DataFrame()
+
+        wide_pdf = filtered_df.pivot(
             index="timestamp", columns="symbol", values="close"
         )
-
-        # Ожидаем вычисления и преобразуем в pandas DataFrame
-        wide_pdf = wide_ddf.compute()
         if wide_pdf.empty:
             return pd.DataFrame()
 
@@ -407,7 +408,7 @@ class DataHandler:
             # Удаляем timezone из timestamp (если есть)
             try:
                 if hasattr(ddf["timestamp"], 'dt') and ddf["timestamp"].dt.tz is not None:
-                    logger.debug(f"Удаляем timezone из данных в Dask DF")
+                    logger.debug("Удаляем timezone из данных в Dask DF")
                     ddf["timestamp"] = ddf["timestamp"].dt.tz_localize(None)
             except (AttributeError, TypeError) as e:
                 logger.debug(f"Не удалось проверить timezone в Dask DataFrame: {str(e)}")
@@ -418,14 +419,16 @@ class DataHandler:
                 (ddf["timestamp"] <= end_date)
             ]
 
-            # Преобразуем в широкий формат с символами в столбцах
-            wide_ddf = filtered_ddf.pivot_table(
+            # Вычисляем отфильтрованные данные и выполняем pivot уже в pandas
+            filtered_df = filtered_ddf.compute()
+            if filtered_df.empty:
+                print(f"No data found between {start_date} and {end_date}")
+                return pd.DataFrame()
+
+            wide_pdf = filtered_df.pivot(
                 index="timestamp", columns="symbol", values="close"
             )
 
-            # Вычисляем конечный результат
-            wide_pdf = wide_ddf.compute()
-            
             if wide_pdf.empty:
                 print(f"No data found between {start_date} and {end_date}")
                 return pd.DataFrame()

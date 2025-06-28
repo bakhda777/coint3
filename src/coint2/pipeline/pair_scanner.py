@@ -2,7 +2,6 @@ from typing import List, Tuple
 import logging
 
 import pandas as pd
-import numpy as np
 import dask
 from dask import delayed
 from statsmodels.tsa.stattools import coint

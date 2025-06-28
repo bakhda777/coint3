@@ -14,7 +14,7 @@ def safe_load(stream: Iterable[str] | str) -> Any:
         if line:
             lines.append(line)
 
-    result = {}
+    result: dict[str, Any] = {}
     stack = [result]
     indents = [0]
     for raw in lines:
@@ -28,7 +28,7 @@ def safe_load(stream: Iterable[str] | str) -> Any:
             indents.pop()
 
         if not val:
-            new_dict = {}
+            new_dict: dict[str, Any] = {}
             stack[-1][key] = new_dict
             stack.append(new_dict)
             indents.append(indent + 2)
