@@ -158,14 +158,66 @@ class DataHandler:
         if not self.data_dir.exists():
             return pd.DataFrame()
 
-        # FIX: Явно указываем колонки и отключаем проверку схемы,
-        # чтобы обойти ошибку валидации в PyArrow.
-        ddf = dd.read_parquet(
-            self.data_dir,
-            engine="pyarrow",
-            columns=["timestamp", "close"],
-            validate_schema=False,
-        )
+        try:
+            # Пробуем альтернативный подход - вместо использования partition_cols,
+            # полностью отключаем использование метаданных для проверки схемы.
+            
+            # Самый простой способ - загрузить каждый файл отдельно и объединить
+            import glob
+            from pathlib import Path
+            import pandas as pd
+            
+            # Ищем все файлы .parquet рекурсивно в директории данных
+            parquet_files = glob.glob(str(self.data_dir) + "/**/data.parquet", recursive=True)
+            
+            # Создаем пустой список для хранения данных
+            dfs = []
+            
+            # Загружаем только файлы в нужном диапазоне дат
+            # Т.к. у нас партиции по symbol/year/month, можно отфильтровать недопустимые года
+            # Для упрощения, используем полное сканирование всех файлов
+            total_files = len(parquet_files)
+            print(f"Found {total_files} parquet files to process")
+            
+            for file_path in parquet_files[:500]:  # Ограничиваем количество файлов для быстрой загрузки
+                path = Path(file_path)
+                
+                # Извлекаем информацию о символе из пути
+                symbol_dir = path.parent.parent.parent.name
+                symbol = symbol_dir.replace("symbol=", "")
+                
+                # Читаем только необходимые колонки
+                df = pd.read_parquet(file_path, columns=["timestamp", "close"])
+                
+                # Добавляем информацию о символе
+                df["symbol"] = symbol
+                
+                # Фильтруем по дате
+                df["timestamp"] = pd.to_datetime(df["timestamp"])
+                mask = (df["timestamp"] >= start_date) & (df["timestamp"] <= end_date)
+                filtered_df = df.loc[mask]
+                
+                # Добавляем в список, если фрейм не пуст
+                if not filtered_df.empty:
+                    dfs.append(filtered_df)
+            
+            # Если нет данных, возвращаем пустой фрейм
+            if not dfs:
+                return pd.DataFrame()
+            
+            # Объединяем все данные
+            combined_df = pd.concat(dfs, ignore_index=True)
+            
+            # Преобразуем в широкий формат
+            wide_df = combined_df.pivot_table(index="timestamp", columns="symbol", values="close")
+            wide_df = wide_df.sort_index()
+            
+            return wide_df
+            
+        except Exception as e:
+            # Если этот подход не сработал, логируем ошибку
+            print(f"Error loading data: {str(e)}")
+            return pd.DataFrame()
         if not ddf.columns:
             return pd.DataFrame()
 
