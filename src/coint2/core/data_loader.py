@@ -40,7 +40,12 @@ class DataHandler:
             self._all_data_cache = dd.from_pandas(pd.DataFrame(), npartitions=1)
             return self._all_data_cache
 
-        ddf = dd.read_parquet(self.data_dir, engine="pyarrow")
+        # FIX: Specify columns explicitly to avoid conflicts with partition
+        # columns when using the pyarrow engine. Dask will create the
+        # 'symbol' column from the directory structure automatically.
+        ddf = dd.read_parquet(
+            self.data_dir, engine="pyarrow", columns=["timestamp", "close"]
+        )
 
         self._all_data_cache = ddf
         return ddf
@@ -154,7 +159,11 @@ class DataHandler:
         if not self.data_dir.exists():
             return pd.DataFrame()
 
-        ddf = dd.read_parquet(self.data_dir, engine="pyarrow")
+        # FIX: Specify columns explicitly to avoid the same partition column
+        # conflict as in _load_full_dataset.
+        ddf = dd.read_parquet(
+            self.data_dir, engine="pyarrow", columns=["timestamp", "close"]
+        )
         if not ddf.columns:
             return pd.DataFrame()
 
