@@ -4,6 +4,7 @@ from pathlib import Path
 
 from coint2.core.data_loader import DataHandler
 import coint2.pipeline.pair_scanner as pair_scanner
+from dask import delayed
 from coint2.utils.config import (
     AppConfig,
     PairSelectionConfig,
@@ -26,7 +27,7 @@ def create_parquet_files(tmp_path: Path) -> None:
         df.to_parquet(part_dir / 'data.parquet')
 
 
-def test_find_cointegrated_pairs(tmp_path: Path) -> None:
+def test_find_cointegrated_pairs(monkeypatch, tmp_path: Path) -> None:
     create_parquet_files(tmp_path)
     cfg = AppConfig(
         data_dir=tmp_path,
@@ -64,6 +65,27 @@ def test_find_cointegrated_pairs(tmp_path: Path) -> None:
     handler = DataHandler(cfg)
     data = handler.load_all_data_for_period(lookback_days=20)
 
+    trad_calls: list[tuple[str, str]] = []
+
+    def fake_tradability(
+        handler_arg,
+        s1: str,
+        s2: str,
+        start_date: pd.Timestamp,
+        end_date: pd.Timestamp,
+        _min_hl: float,
+        _max_hl: float,
+        _min_cross: int,
+    ) -> tuple[str, str] | None:
+        trad_calls.append((s1, s2))
+        return (s1, s2)
+
+    monkeypatch.setattr(
+        pair_scanner,
+        "_test_pair_for_tradability",
+        delayed(fake_tradability),
+    )
+
     beta = data["A"].cov(data["B"]) / data["B"].var()
     spread = data["A"] - beta * data["B"]
     expected = ("A", "B", beta, spread.mean(), spread.std())
@@ -73,3 +95,4 @@ def test_find_cointegrated_pairs(tmp_path: Path) -> None:
     pairs = pair_scanner.find_cointegrated_pairs(handler, start, end, cfg)
 
     assert pairs == [expected]
+    assert trad_calls == [("A", "B")]
