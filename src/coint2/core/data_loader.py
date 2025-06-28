@@ -22,6 +22,12 @@ class DataHandler:
         self.max_shards = cfg.max_shards
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self._all_data_cache: dd.DataFrame | None = None
+        self._freq: str | None = None
+
+    @property
+    def freq(self) -> str | None:
+        """Return detected time step of the loaded data."""
+        return self._freq
 
     def clear_cache(self) -> None:
         """Clears the in-memory Dask DataFrame cache."""
@@ -231,6 +237,11 @@ class DataHandler:
 
         # Сортируем по индексу (дате)
         wide_pdf = wide_pdf.sort_index()
+
+        self._freq = pd.infer_freq(wide_pdf.index)
+        if self._freq:
+            wide_pdf = wide_pdf.asfreq(self._freq)
+
         return wide_pdf
 
     def load_pair_data(
@@ -299,8 +310,10 @@ class DataHandler:
             return pd.DataFrame()
 
         # Обработка пропущенных значений
-        freq = pd.infer_freq(wide_df.index) or "D"
-        wide_df = wide_df.asfreq(freq)
+        freq = pd.infer_freq(wide_df.index)
+        self._freq = freq
+        if freq:
+            wide_df = wide_df.asfreq(freq)
         limit = int(len(wide_df) * self.fill_limit_pct)
         wide_df = wide_df.ffill(limit=limit).bfill(limit=limit)
 
@@ -431,7 +444,13 @@ class DataHandler:
                 return pd.DataFrame()
 
             # Сортируем по индексу (датам)
-            return wide_pdf.sort_index()
+            wide_pdf = wide_pdf.sort_index()
+
+            self._freq = pd.infer_freq(wide_pdf.index)
+            if self._freq:
+                wide_pdf = wide_pdf.asfreq(self._freq)
+
+            return wide_pdf
             
         except Exception as e:
             # Если Dask-подход не сработал, переходим на ручной обход через pandas
@@ -518,7 +537,11 @@ class DataHandler:
                 # Преобразуем в широкий формат
                 wide_df = combined_df.pivot_table(index="timestamp", columns="symbol", values="close")
                 wide_df = wide_df.sort_index()
-                
+
+                self._freq = pd.infer_freq(wide_df.index)
+                if self._freq:
+                    wide_df = wide_df.asfreq(self._freq)
+
                 print(f"Successfully loaded data manually. Shape: {wide_df.shape}")
                 return wide_df
                 
