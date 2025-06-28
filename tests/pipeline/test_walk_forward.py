@@ -5,6 +5,17 @@ from coint2.core.data_loader import DataHandler
 from coint2.engine.backtest_engine import PairBacktester
 from coint2.pipeline import walk_forward_orchestrator as wf
 from coint2.utils.config import AppConfig, PairSelectionConfig, BacktestConfig, WalkForwardConfig
+from pydantic import BaseModel
+
+
+class PortfolioConfig(BaseModel):
+    initial_capital: float
+    risk_per_trade_pct: float
+    max_active_positions: int
+
+
+class AppConfigWithPortfolio(AppConfig):
+    portfolio: PortfolioConfig
 from coint2.core import performance
 
 
@@ -20,8 +31,9 @@ def create_dataset(base_dir: Path) -> None:
         df.to_parquet(part_dir / "data.parquet")
 
 
-def manual_walk_forward(handler: DataHandler, cfg: AppConfig) -> dict:
+def manual_walk_forward(handler: DataHandler, cfg: AppConfigWithPortfolio) -> dict:
     overall = pd.Series(dtype=float)
+    equity = cfg.portfolio.initial_capital
     current = pd.Timestamp(cfg.walk_forward.start_date)
     end = pd.Timestamp(cfg.walk_forward.end_date)
     while current < end:
@@ -35,20 +47,40 @@ def manual_walk_forward(handler: DataHandler, cfg: AppConfig) -> dict:
         spread = train["A"] - beta * train["B"]
         mean = spread.mean()
         std = spread.std()
-        data = handler.load_pair_data("A", "B", test_start, test_end)
-        bt = PairBacktester(
-            data,
-            beta=beta,
-            spread_mean=mean,
-            spread_std=std,
-            z_threshold=cfg.backtest.zscore_threshold,
-            commission_pct=cfg.backtest.commission_pct,
-            slippage_pct=cfg.backtest.slippage_pct,
-            annualizing_factor=cfg.backtest.annualizing_factor,
-        )
-        bt.run()
-        overall = pd.concat([overall, bt.get_results()["pnl"]])
+
+        pairs = [("A", "B", beta, mean, std)]
+        active_pairs = pairs[: cfg.portfolio.max_active_positions]
+        total_risk_capital = equity * cfg.portfolio.risk_per_trade_pct
+
+        step_pnl = pd.Series(dtype=float)
+        total_step_pnl = 0.0
+
+        if active_pairs:
+            capital_per_pair = total_risk_capital / len(active_pairs)
+        else:
+            capital_per_pair = 0.0
+
+        for _s1, _s2, _beta, _mean, _std in active_pairs:
+            data = handler.load_pair_data("A", "B", test_start, test_end)
+            bt = PairBacktester(
+                data,
+                beta=_beta,
+                spread_mean=_mean,
+                spread_std=_std,
+                z_threshold=cfg.backtest.zscore_threshold,
+                commission_pct=cfg.backtest.commission_pct,
+                slippage_pct=cfg.backtest.slippage_pct,
+                annualizing_factor=cfg.backtest.annualizing_factor,
+            )
+            bt.run()
+            pnl_series = bt.get_results()["pnl"] * capital_per_pair
+            step_pnl = step_pnl.add(pnl_series, fill_value=0)
+            total_step_pnl += pnl_series.sum()
+
+        overall = pd.concat([overall, step_pnl])
+        equity += total_step_pnl
         current = test_end
+
     overall = overall.dropna()
     if overall.empty:
         return {"sharpe_ratio": 0.0, "max_drawdown": 0.0, "total_pnl": 0.0}
@@ -64,7 +96,7 @@ def manual_walk_forward(handler: DataHandler, cfg: AppConfig) -> dict:
 
 def test_walk_forward(monkeypatch, tmp_path: Path) -> None:
     create_dataset(tmp_path)
-    cfg = AppConfig(
+    cfg = AppConfigWithPortfolio(
         data_dir=tmp_path,
         results_dir=tmp_path / "results",
         pair_selection=PairSelectionConfig(
@@ -84,6 +116,11 @@ def test_walk_forward(monkeypatch, tmp_path: Path) -> None:
             end_date="2021-01-11",
             training_period_days=2,
             testing_period_days=2,
+        ),
+        portfolio=PortfolioConfig(
+            initial_capital=1000.0,
+            risk_per_trade_pct=0.1,
+            max_active_positions=1,
         ),
     )
 
