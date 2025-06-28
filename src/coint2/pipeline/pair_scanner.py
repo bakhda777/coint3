@@ -6,7 +6,7 @@ from dask import delayed
 from statsmodels.tsa.stattools import coint
 
 from coint2.core import math_utils
-from coint2.utils.config import CONFIG
+from coint2.utils.config import AppConfig
 
 
 def _coint_test(series1: pd.Series, series2: pd.Series) -> float:
@@ -46,11 +46,11 @@ def find_cointegrated_pairs(
     handler,
     start_date: pd.Timestamp,
     end_date: pd.Timestamp,
-    p_value_threshold: float,
+    cfg: AppConfig,
 ) -> List[Tuple[str, str, float, float, float]]:
     """Find cointegrated pairs using SSD pre-filtering."""
 
-    cfg = CONFIG
+    p_value_threshold = cfg.pair_selection.coint_pvalue_threshold
 
     normalized = handler.load_and_normalize_data(start_date, end_date)
     if normalized.empty or len(normalized.columns) < 2:

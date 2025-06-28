@@ -3,15 +3,15 @@ import pandas as pd  # type: ignore
 from pathlib import Path
 from typing import List
 
+from coint2.utils.config import AppConfig
+
 
 class DataHandler:
     """Utility class for loading local parquet price files."""
 
-    def __init__(self, data_dir: Path, timeframe: str, fill_limit_pct: float) -> None:
-        self.data_dir = Path(data_dir)
-        # timeframe kept for metadata compatibility but no longer used in path
-        self.timeframe = timeframe
-        self.fill_limit_pct = fill_limit_pct
+    def __init__(self, cfg: AppConfig) -> None:
+        self.data_dir = Path(cfg.data_dir)
+        self.fill_limit_pct = cfg.backtest.fill_limit_pct
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self._all_data_cache: dd.DataFrame | None = None
 
