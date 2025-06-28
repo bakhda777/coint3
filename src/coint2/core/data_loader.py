@@ -36,14 +36,16 @@ class DataHandler:
             return self._all_data_cache
 
         if not self.data_dir.exists():
-            # empty Dask DataFrame
             self._all_data_cache = dd.from_pandas(pd.DataFrame(), npartitions=1)
             return self._all_data_cache
 
-        # FIX: Явно указываем колонки для чтения из файлов, чтобы
-        # избежать конфликтов с колонками партиций (например, 'symbol').
+        # FIX: Явно указываем колонки и отключаем проверку схемы,
+        # чтобы обойти ошибку валидации в PyArrow.
         ddf = dd.read_parquet(
-            self.data_dir, engine="pyarrow", columns=["timestamp", "close"]
+            self.data_dir,
+            engine="pyarrow",
+            columns=["timestamp", "close"],
+            validate_schema=False,
         )
 
         self._all_data_cache = ddf
@@ -156,10 +158,13 @@ class DataHandler:
         if not self.data_dir.exists():
             return pd.DataFrame()
 
-        # FIX: Явно указываем колонки для чтения, чтобы избежать той же ошибки,
-        # что и в _load_full_dataset.
+        # FIX: Явно указываем колонки и отключаем проверку схемы,
+        # чтобы обойти ошибку валидации в PyArrow.
         ddf = dd.read_parquet(
-            self.data_dir, engine="pyarrow", columns=["timestamp", "close"]
+            self.data_dir,
+            engine="pyarrow",
+            columns=["timestamp", "close"],
+            validate_schema=False,
         )
         if not ddf.columns:
             return pd.DataFrame()
