@@ -5,6 +5,7 @@ from coint2.core.data_loader import DataHandler
 from coint2.utils.config import (
     AppConfig,
     BacktestConfig,
+    PortfolioConfig,
     PairSelectionConfig,
     WalkForwardConfig,
 )
@@ -25,6 +26,11 @@ def test_load_all_data_for_period(tmp_path: Path) -> None:
     cfg = AppConfig(
         data_dir=tmp_path,
         results_dir=tmp_path,
+        portfolio=PortfolioConfig(
+            initial_capital=10000.0,
+            risk_per_trade_pct=0.01,
+            max_active_positions=5,
+        ),
         pair_selection=PairSelectionConfig(
             lookback_days=1,
             coint_pvalue_threshold=0.05,
@@ -34,6 +40,7 @@ def test_load_all_data_for_period(tmp_path: Path) -> None:
             timeframe="1d",
             rolling_window=1,
             zscore_threshold=1.0,
+            stop_loss_multiplier=3.0,
             fill_limit_pct=0.1,
             commission_pct=0.0,
             slippage_pct=0.0,
@@ -67,6 +74,11 @@ def test_load_pair_data(tmp_path: Path) -> None:
     cfg = AppConfig(
         data_dir=tmp_path,
         results_dir=tmp_path,
+        portfolio=PortfolioConfig(
+            initial_capital=10000.0,
+            risk_per_trade_pct=0.01,
+            max_active_positions=5,
+        ),
         pair_selection=PairSelectionConfig(
             lookback_days=1,
             coint_pvalue_threshold=0.05,
@@ -76,6 +88,7 @@ def test_load_pair_data(tmp_path: Path) -> None:
             timeframe="1d",
             rolling_window=1,
             zscore_threshold=1.0,
+            stop_loss_multiplier=3.0,
             fill_limit_pct=0.1,
             commission_pct=0.0,
             slippage_pct=0.0,
@@ -115,6 +128,11 @@ def test_load_and_normalize_data(tmp_path: Path) -> None:
     cfg = AppConfig(
         data_dir=tmp_path,
         results_dir=tmp_path,
+        portfolio=PortfolioConfig(
+            initial_capital=10000.0,
+            risk_per_trade_pct=0.01,
+            max_active_positions=5,
+        ),
         pair_selection=PairSelectionConfig(
             lookback_days=1,
             coint_pvalue_threshold=0.05,
@@ -124,6 +142,7 @@ def test_load_and_normalize_data(tmp_path: Path) -> None:
             timeframe="1d",
             rolling_window=1,
             zscore_threshold=1.0,
+            stop_loss_multiplier=3.0,
             fill_limit_pct=0.1,
             commission_pct=0.0,
             slippage_pct=0.0,
@@ -168,6 +187,11 @@ def test_clear_cache(tmp_path: Path) -> None:
     cfg = AppConfig(
         data_dir=tmp_path,
         results_dir=tmp_path,
+        portfolio=PortfolioConfig(
+            initial_capital=10000.0,
+            risk_per_trade_pct=0.01,
+            max_active_positions=5,
+        ),
         pair_selection=PairSelectionConfig(
             lookback_days=1,
             coint_pvalue_threshold=0.05,
@@ -177,6 +201,7 @@ def test_clear_cache(tmp_path: Path) -> None:
             timeframe="1d",
             rolling_window=1,
             zscore_threshold=1.0,
+            stop_loss_multiplier=3.0,
             fill_limit_pct=0.1,
             commission_pct=0.0,
             slippage_pct=0.0,

@@ -1,5 +1,9 @@
 data_dir: "data_optimized"
 results_dir: "results"
+portfolio:
+  initial_capital: 10000.0
+  risk_per_trade_pct: 0.01  # Риск 1% на сделку
+  max_active_positions: 5   # Торгуем не более 5 пар одновременно
 pair_selection:
   lookback_days: 90
   coint_pvalue_threshold: 0.05
@@ -8,6 +12,7 @@ backtest:
   timeframe: "1d"
   rolling_window: 30
   zscore_threshold: 1.5
+  stop_loss_multiplier: 3.0 # Стоп-лосс на уровне 3-х стандартных отклонений
   fill_limit_pct: 0.2
   commission_pct: 0.001  # Новая строка: Комиссия 0.1%
   slippage_pct: 0.0005 # Новая строка: Проскальзывание 0.05%

@@ -14,12 +14,21 @@ class PairSelectionConfig(BaseModel):
     ssd_top_n: int
 
 
+class PortfolioConfig(BaseModel):
+    """Configuration for portfolio and risk management."""
+
+    initial_capital: float
+    risk_per_trade_pct: float
+    max_active_positions: int
+
+
 class BacktestConfig(BaseModel):
     """Configuration for backtesting parameters."""
 
     timeframe: str
     rolling_window: int
     zscore_threshold: float
+    stop_loss_multiplier: float
     fill_limit_pct: float = Field(..., gt=0.0, lt=1.0)
     commission_pct: float  # Новое поле
     slippage_pct: float  # Новое поле
@@ -40,6 +49,7 @@ class AppConfig(BaseModel):
 
     data_dir: DirectoryPath
     results_dir: Path
+    portfolio: PortfolioConfig
     pair_selection: PairSelectionConfig
     backtest: BacktestConfig
     walk_forward: WalkForwardConfig
