@@ -70,6 +70,8 @@ def test_walk_forward(monkeypatch, tmp_path: Path) -> None:
             rolling_window=3,
             zscore_threshold=1.0,
             fill_limit_pct=0.0,
+            commission_pct=0.001,
+            slippage_pct=0.0005,
         ),
         walk_forward=WalkForwardConfig(
             start_date="2021-01-01",
