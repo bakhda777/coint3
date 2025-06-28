@@ -56,6 +56,7 @@ def test_backtester_outputs():
     z_threshold = 1.0
     commission = 0.001
     slippage = 0.0005
+    annualizing_factor = 365
 
     beta, mean, std = calc_params(data)
 
@@ -67,6 +68,7 @@ def test_backtester_outputs():
         z_threshold=z_threshold,
         commission_pct=commission,
         slippage_pct=slippage,
+        annualizing_factor=annualizing_factor,
     )
     bt.run()
     result = bt.get_results()
@@ -91,8 +93,9 @@ def test_backtester_outputs():
     expected_pnl = expected["pnl"].dropna()
     expected_cum_pnl = expected["cumulative_pnl"].dropna()
     expected_metrics = {
-        # ИСПРАВЛЕНИЕ: Используем правильные ключи из `get_performance_metrics`
-        "sharpe_ratio": performance.sharpe_ratio(expected_pnl),
+        "sharpe_ratio": performance.sharpe_ratio(
+            expected_pnl, annualizing_factor
+        ),
         "max_drawdown": performance.max_drawdown(expected_cum_pnl),
         "total_pnl": expected_cum_pnl.iloc[-1] if not expected_cum_pnl.empty else 0.0,
     }

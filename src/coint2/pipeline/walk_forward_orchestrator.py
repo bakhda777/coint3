@@ -68,6 +68,9 @@ def run_walk_forward() -> Dict[str, float]:
                 spread_mean=mean,
                 spread_std=std,
                 z_threshold=cfg.backtest.zscore_threshold,
+                commission_pct=cfg.backtest.commission_pct,
+                slippage_pct=cfg.backtest.slippage_pct,
+                annualizing_factor=cfg.backtest.annualizing_factor,
             )
             bt.run()
             step_pnl = step_pnl.add(bt.get_results()["pnl"], fill_value=0)
@@ -82,7 +85,9 @@ def run_walk_forward() -> Dict[str, float]:
 
     cumulative = aggregated_pnl.cumsum()
     return {
-        "sharpe_ratio": performance.sharpe_ratio(aggregated_pnl),
+        "sharpe_ratio": performance.sharpe_ratio(
+            aggregated_pnl, cfg.backtest.annualizing_factor
+        ),
         "max_drawdown": performance.max_drawdown(cumulative),
         "total_pnl": cumulative.iloc[-1],
     }

@@ -12,4 +12,5 @@ def test_load_config():
     assert cfg.backtest.rolling_window == 30
     assert cfg.backtest.commission_pct == 0.001
     assert cfg.backtest.slippage_pct == 0.0005
+    assert cfg.backtest.annualizing_factor == 365
 

@@ -14,6 +14,7 @@ class PairBacktester:
         z_threshold: float,
         commission_pct: float = 0.0,
         slippage_pct: float = 0.0,
+        annualizing_factor: int = 365,
     ) -> None:
         """Initialize backtester with pre-computed parameters.
 
@@ -39,6 +40,7 @@ class PairBacktester:
         self.results: pd.DataFrame | None = None
         self.commission_pct = commission_pct
         self.slippage_pct = slippage_pct
+        self.annualizing_factor = annualizing_factor
 
     def run(self) -> None:
         """Run backtest and store results in ``self.results``."""
@@ -105,7 +107,7 @@ class PairBacktester:
             }
 
         return {
-            "sharpe_ratio": performance.sharpe_ratio(pnl),
+            "sharpe_ratio": performance.sharpe_ratio(pnl, self.annualizing_factor),
             "max_drawdown": performance.max_drawdown(cum_pnl),
             "total_pnl": cum_pnl.iloc[-1] if not cum_pnl.empty else 0.0,
         }
