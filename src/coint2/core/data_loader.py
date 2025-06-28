@@ -64,6 +64,7 @@ class DataHandler:
                 filters=None,  # Не применяем фильтры на уровне партиций
                 validate_schema=False,  # Отключаем строгую валидацию схемы
             )
+            self._all_data_cache = ddf
             return ddf
         except Exception as e:
             print(f"Ошибка загрузки данных через Dask в _load_full_dataset: {str(e)}")
@@ -80,6 +81,7 @@ class DataHandler:
                 parquet_files = glob.glob(str(self.data_dir) + "/**/data.parquet", recursive=True)
                 if not parquet_files:
                     print(f"Не найдено ни одного parquet файла в {self.data_dir}")
+
                     return empty_ddf()
                 
                 print(f"Найдено {len(parquet_files)} файлов parquet")
@@ -175,21 +177,25 @@ class DataHandler:
                     
                 if not dfs:
                     print("Не удалось загрузить ни один файл")
-                    return empty_ddf()
+                    self._all_data_cache = dd.from_pandas(pd.DataFrame(), npartitions=1)
+                    return self._all_data_cache
                     
                 try:
                     # Объединяем все Dask DataFrame в один
                     combined_ddf = dd.concat(dfs)
                     print(f"Успешно создан объединенный Dask DataFrame")
+                    self._all_data_cache = combined_ddf
                     return combined_ddf
                 except Exception as concat_error:
                     print(f"Ошибка при объединении DataFrame: {str(concat_error)}")
-                    return empty_ddf()
+                    self._all_data_cache = dd.from_pandas(pd.DataFrame(), npartitions=1)
+                    return self._all_data_cache
                     
             except Exception as e2:
                 print(f"Ошибка при использовании запасного варианта: {str(e2)}")
                 # Если и запасной вариант не сработал, возвращаем пустой фрейм
-                return empty_ddf()
+                self._all_data_cache = dd.from_pandas(pd.DataFrame(), npartitions=1)
+                return self._all_data_cache
 
     def load_all_data_for_period(self, lookback_days: int) -> pd.DataFrame:
         """Load close prices for all symbols for the given lookback period."""
