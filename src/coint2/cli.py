@@ -3,13 +3,11 @@
 from __future__ import annotations
 
 import click
-import pandas as pd
 
 from coint2.core.data_loader import DataHandler
 from coint2.engine.backtest_engine import PairBacktester
 from coint2.pipeline.walk_forward_orchestrator import run_walk_forward
 from coint2.utils.config import CONFIG
-from coint2.utils.logging_utils import get_logger
 
 
 @click.group()

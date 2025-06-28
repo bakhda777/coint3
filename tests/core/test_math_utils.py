@@ -2,7 +2,11 @@ import numpy as np
 import pandas as pd
 from scipy.stats import linregress
 
-from coint2.core.math_utils import rolling_beta, rolling_zscore
+from coint2.core.math_utils import (
+    rolling_beta,
+    rolling_zscore,
+    calculate_ssd,
+)
 
 
 def test_rolling_beta_matches_linregress():
@@ -31,3 +35,26 @@ def test_rolling_zscore_basic():
     stds = series.rolling(3).std()
     expected = (series - means) / stds
     pd.testing.assert_series_equal(z, expected)
+
+
+def test_calculate_ssd():
+    df = pd.DataFrame(
+        {
+            "A": [0, 0, 0],
+            "B": [1, 1, 1],
+            "C": [0, 2, 4],
+        }
+    )
+
+    result = calculate_ssd(df)
+
+    expected_index = pd.MultiIndex.from_tuples(
+        [
+            ("A", "B"),
+            ("B", "C"),
+            ("A", "C"),
+        ]
+    )
+    expected = pd.Series([3, 11, 20], index=expected_index)
+
+    pd.testing.assert_series_equal(result, expected)
