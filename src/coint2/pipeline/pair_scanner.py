@@ -1,10 +1,12 @@
-from itertools import combinations
 from typing import List, Tuple
 
 import pandas as pd
 import dask
 from dask import delayed
 from statsmodels.tsa.stattools import coint
+
+from coint2.core import math_utils
+from coint2.utils.config import CONFIG
 
 
 def _coint_test(series1: pd.Series, series2: pd.Series) -> float:
@@ -46,16 +48,19 @@ def find_cointegrated_pairs(
     end_date: pd.Timestamp,
     p_value_threshold: float,
 ) -> List[Tuple[str, str, float, float, float]]:
-    """Generate and compute dask tasks to find cointegrated pairs.
+    """Find cointegrated pairs using SSD pre-filtering."""
 
-    Returns tuples of ``(symbol1, symbol2, beta, spread_mean, spread_std)``
-    for each pair passing the cointegration test.
-    """
-    all_symbols = handler.get_all_symbols()
-    all_pairs = list(combinations(all_symbols, 2))
+    cfg = CONFIG
+
+    normalized = handler.load_and_normalize_data(start_date, end_date)
+    if normalized.empty or len(normalized.columns) < 2:
+        return []
+
+    ssd = math_utils.calculate_ssd(normalized)
+    top_pairs = ssd.head(cfg.pair_selection.ssd_top_n).index.tolist()
 
     lazy_results = []
-    for s1, s2 in all_pairs:
+    for s1, s2 in top_pairs:
         task = _test_pair_for_coint(
             handler,
             s1,

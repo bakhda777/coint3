@@ -3,6 +3,7 @@ results_dir: "results"
 pair_selection:
   lookback_days: 90
   coint_pvalue_threshold: 0.05
+  ssd_top_n: 100
 backtest:
   timeframe: "1d"
   rolling_window: 30

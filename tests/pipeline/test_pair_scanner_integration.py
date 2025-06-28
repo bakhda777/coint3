@@ -1,12 +1,16 @@
 import pandas as pd
 from pathlib import Path
 
-from itertools import combinations
-
-from coint2.core.data_loader import DataHandler
 import numpy as np
 
-from coint2.pipeline.pair_scanner import find_cointegrated_pairs, _coint_test
+from coint2.core.data_loader import DataHandler
+import coint2.pipeline.pair_scanner as pair_scanner
+from coint2.utils.config import (
+    AppConfig,
+    PairSelectionConfig,
+    BacktestConfig,
+    WalkForwardConfig,
+)
 
 
 def create_parquet_files(tmp_path: Path) -> None:
@@ -22,35 +26,38 @@ def create_parquet_files(tmp_path: Path) -> None:
         df.to_parquet(part_dir / 'data.parquet')
 
 
-def test_find_cointegrated_pairs(tmp_path: Path) -> None:
+def test_find_cointegrated_pairs(tmp_path: Path, monkeypatch) -> None:
     create_parquet_files(tmp_path)
-    handler = DataHandler(tmp_path, '1d', fill_limit_pct=0.1)
+    handler = DataHandler(tmp_path, "1d", fill_limit_pct=0.1)
     data = handler.load_all_data_for_period(lookback_days=20)
 
-    # reference sequential implementation
-    expected: dict[tuple[str, str], tuple[float, float, float]] = {}
-    for s1, s2 in combinations(data.columns, 2):
-        s1_series = data[s1].dropna()
-        s2_series = data[s2].dropna()
-        pval = _coint_test(s1_series, s2_series)
-        if pval < 0.05:
-            beta = s1_series.cov(s2_series) / s2_series.var()
-            spread = s1_series - beta * s2_series
-            expected[(s1, s2)] = (beta, spread.mean(), spread.std())
+    cfg = AppConfig(
+        data_dir=tmp_path,
+        results_dir=tmp_path,
+        pair_selection=PairSelectionConfig(
+            lookback_days=20, coint_pvalue_threshold=0.05, ssd_top_n=1
+        ),
+        backtest=BacktestConfig(
+            timeframe="1d", rolling_window=1, zscore_threshold=1.0, fill_limit_pct=0.1
+        ),
+        walk_forward=WalkForwardConfig(
+            start_date="2021-01-01",
+            end_date="2021-01-02",
+            training_period_days=1,
+            testing_period_days=1,
+        ),
+    )
 
-    start = data.index.min()
-    end = data.index.max()
-    pairs = find_cointegrated_pairs(handler, start, end, p_value_threshold=0.05)
-    assert len(pairs) == len(expected)
-
-    returned = pairs[0]
-    assert returned[:2] == expected[0]
+    monkeypatch.setattr(pair_scanner, "CONFIG", cfg)
 
     beta = data["A"].cov(data["B"]) / data["B"].var()
     spread = data["A"] - beta * data["B"]
-    mean = spread.mean()
-    std = spread.std()
+    expected = ("A", "B", beta, spread.mean(), spread.std())
 
-    assert np.isclose(returned[2], beta)
-    assert np.isclose(returned[3], mean)
-    assert np.isclose(returned[4], std)
+    start = data.index.min()
+    end = data.index.max()
+    pairs = pair_scanner.find_cointegrated_pairs(
+        handler, start, end, p_value_threshold=0.05
+    )
+
+    assert pairs == [expected]

@@ -11,6 +11,7 @@ class PairSelectionConfig(BaseModel):
 
     lookback_days: int
     coint_pvalue_threshold: float
+    ssd_top_n: int
 
 
 class BacktestConfig(BaseModel):
