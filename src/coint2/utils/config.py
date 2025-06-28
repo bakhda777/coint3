@@ -3,7 +3,7 @@
 from pathlib import Path
 
 import yaml  # type: ignore
-from pydantic import BaseModel, DirectoryPath  # type: ignore
+from pydantic import BaseModel, DirectoryPath, Field  # type: ignore
 
 
 class PairSelectionConfig(BaseModel):
@@ -20,7 +20,7 @@ class BacktestConfig(BaseModel):
     timeframe: str
     rolling_window: int
     zscore_threshold: float
-    fill_limit_pct: float
+    fill_limit_pct: float = Field(..., gt=0.0, lt=1.0)
     commission_pct: float  # Новое поле
     slippage_pct: float  # Новое поле
     annualizing_factor: int  # Новое поле

@@ -48,7 +48,7 @@ def manual_walk_forward(handler: DataHandler, cfg: AppConfig) -> dict:
         )
         bt.run()
         overall = pd.concat([overall, bt.get_results()["pnl"]])
-        current = test_start
+        current = test_end
     overall = overall.dropna()
     if overall.empty:
         return {"sharpe_ratio": 0.0, "max_drawdown": 0.0, "total_pnl": 0.0}
@@ -105,4 +105,4 @@ def test_walk_forward(monkeypatch, tmp_path: Path) -> None:
     expected_metrics = manual_walk_forward(DataHandler(cfg), cfg)
 
     assert metrics == expected_metrics
-    assert len(calls) == 4
+    assert len(calls) == 2

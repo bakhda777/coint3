@@ -1,6 +1,9 @@
 from pathlib import Path
 
 from coint2.utils.config import AppConfig, load_config
+from coint2.utils.config import BacktestConfig
+from pydantic import ValidationError
+import pytest
 
 
 def test_load_config():
@@ -13,4 +16,18 @@ def test_load_config():
     assert cfg.backtest.commission_pct == 0.001
     assert cfg.backtest.slippage_pct == 0.0005
     assert cfg.backtest.annualizing_factor == 365
+
+
+def test_fill_limit_pct_validation() -> None:
+    """fill_limit_pct should be between 0 and 1."""
+    with pytest.raises(ValidationError):
+        BacktestConfig(
+            timeframe="1d",
+            rolling_window=1,
+            zscore_threshold=1.0,
+            fill_limit_pct=1.5,
+            commission_pct=0.001,
+            slippage_pct=0.0005,
+            annualizing_factor=365,
+        )
 
