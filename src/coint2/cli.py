@@ -13,13 +13,22 @@ from coint2.utils.config import load_config
 
 
 @click.group()
-def main() -> None:
+@click.option(
+    "--expected-freq",
+    default=None,
+    help="Assert that loaded data has this frequency (e.g. '15T').",
+)
+@click.pass_context
+def main(ctx: click.Context, expected_freq: str | None) -> None:
     """Entry point for the ``coint2`` command."""
+
+    ctx.obj = {"expected_freq": expected_freq}
 
 
 @main.command()
 @click.option("--pair", required=True, help="Pair in the format SYMBOL1,SYMBOL2")
-def backtest(pair: str) -> None:
+@click.pass_context
+def backtest(ctx: click.Context, pair: str) -> None:
     """Quick backtest over the entire dataset (for debugging only)."""
 
     cfg = load_config(Path("configs/main.yaml"))
@@ -56,6 +65,12 @@ def backtest(pair: str) -> None:
     for k, v in metrics.items():
         click.echo(f"{k}: {v}")
 
+    expected_freq = ctx.obj.get("expected_freq")
+    if expected_freq and handler.freq != expected_freq:
+        raise click.ClickException(
+            f"Expected frequency {expected_freq}, got {handler.freq}"
+        )
+
 
 @main.command(name="run")
 @click.option(
@@ -65,10 +80,21 @@ def backtest(pair: str) -> None:
     help="Path to the configuration YAML file.",
     type=click.Path(exists=True),
 )
-def run_cmd(config_path: str) -> None:
+@click.pass_context
+def run_cmd(ctx: click.Context, config_path: str) -> None:
     """Run walk-forward analysis pipeline."""
 
     cfg = load_config(Path(config_path))
+    expected_freq = ctx.obj.get("expected_freq")
+
+    if expected_freq:
+        tmp_handler = DataHandler(cfg)
+        tmp_handler.load_all_data_for_period(1)
+        if tmp_handler.freq != expected_freq:
+            raise click.ClickException(
+                f"Expected frequency {expected_freq}, got {tmp_handler.freq}"
+            )
+
     metrics = run_walk_forward(cfg)
     for key, value in metrics.items():
         click.echo(f"{key}: {value}")
