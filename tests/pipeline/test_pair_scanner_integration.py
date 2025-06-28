@@ -43,6 +43,7 @@ def test_find_cointegrated_pairs(tmp_path: Path, monkeypatch) -> None:
             fill_limit_pct=0.1,
             commission_pct=0.001,
             slippage_pct=0.0005,
+            annualizing_factor=365,
         ),
         walk_forward=WalkForwardConfig(
             start_date="2021-01-01",

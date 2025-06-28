@@ -6,10 +6,7 @@ import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
 
 
-TRADING_DAYS = 252
-
-
-def sharpe_ratio(pnl: pd.Series, risk_free_rate: float = 0.0) -> float:
+def sharpe_ratio(pnl: pd.Series, annualizing_factor: int, risk_free_rate: float = 0.0) -> float:
     """Compute annualized Sharpe ratio of a PnL series.
 
     Parameters
@@ -28,7 +25,7 @@ def sharpe_ratio(pnl: pd.Series, risk_free_rate: float = 0.0) -> float:
     if excess_returns.std(ddof=0) == 0:
         return np.nan
     daily_sharpe = excess_returns.mean() / excess_returns.std(ddof=0)
-    return daily_sharpe * np.sqrt(TRADING_DAYS)
+    return daily_sharpe * np.sqrt(annualizing_factor)
 
 
 def max_drawdown(cumulative_pnl: pd.Series) -> float:

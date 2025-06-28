@@ -42,6 +42,9 @@ def manual_walk_forward(handler: DataHandler, cfg: AppConfig) -> dict:
             spread_mean=mean,
             spread_std=std,
             z_threshold=cfg.backtest.zscore_threshold,
+            commission_pct=cfg.backtest.commission_pct,
+            slippage_pct=cfg.backtest.slippage_pct,
+            annualizing_factor=cfg.backtest.annualizing_factor,
         )
         bt.run()
         overall = pd.concat([overall, bt.get_results()["pnl"]])
@@ -51,7 +54,9 @@ def manual_walk_forward(handler: DataHandler, cfg: AppConfig) -> dict:
         return {"sharpe_ratio": 0.0, "max_drawdown": 0.0, "total_pnl": 0.0}
     cum = overall.cumsum()
     return {
-        "sharpe_ratio": performance.sharpe_ratio(overall),
+        "sharpe_ratio": performance.sharpe_ratio(
+            overall, cfg.backtest.annualizing_factor
+        ),
         "max_drawdown": performance.max_drawdown(cum),
         "total_pnl": cum.iloc[-1],
     }
@@ -72,6 +77,7 @@ def test_walk_forward(monkeypatch, tmp_path: Path) -> None:
             fill_limit_pct=0.0,
             commission_pct=0.001,
             slippage_pct=0.0005,
+            annualizing_factor=365,
         ),
         walk_forward=WalkForwardConfig(
             start_date="2021-01-01",

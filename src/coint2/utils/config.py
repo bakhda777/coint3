@@ -23,6 +23,7 @@ class BacktestConfig(BaseModel):
     fill_limit_pct: float
     commission_pct: float  # Новое поле
     slippage_pct: float  # Новое поле
+    annualizing_factor: int  # Новое поле
 
 
 class WalkForwardConfig(BaseModel):
