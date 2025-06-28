@@ -63,7 +63,7 @@ def test_walk_forward(monkeypatch, tmp_path: Path) -> None:
         data_dir=tmp_path,
         results_dir=tmp_path / "results",
         pair_selection=PairSelectionConfig(
-            lookback_days=5, coint_pvalue_threshold=0.05
+            lookback_days=5, coint_pvalue_threshold=0.05, ssd_top_n=1
         ),
         backtest=BacktestConfig(
             timeframe="1d",
