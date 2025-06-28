@@ -29,6 +29,9 @@ def create_dataset(base_dir: Path) -> None:
 
 
 def manual_walk_forward(handler: DataHandler, cfg: AppConfig) -> dict:
+    full_start = pd.Timestamp(cfg.walk_forward.start_date) - pd.Timedelta(days=cfg.walk_forward.training_period_days)
+    master = handler.preload_all_data(full_start, pd.Timestamp(cfg.walk_forward.end_date))
+
     overall = pd.Series(dtype=float)
     equity = cfg.portfolio.initial_capital
     current = pd.Timestamp(cfg.walk_forward.start_date)
@@ -39,7 +42,7 @@ def manual_walk_forward(handler: DataHandler, cfg: AppConfig) -> dict:
         test_end = test_start + pd.Timedelta(days=cfg.walk_forward.testing_period_days)
         if test_end > end:
             break
-        train = handler.load_pair_data("A", "B", current, train_end)
+        train = master.loc[current:train_end, ["A", "B"]].dropna()
         beta = train["A"].cov(train["B"]) / train["B"].var()
         spread = train["A"] - beta * train["B"]
         mean = spread.mean()
@@ -58,7 +61,7 @@ def manual_walk_forward(handler: DataHandler, cfg: AppConfig) -> dict:
             capital_per_pair = 0.0
 
         for _s1, _s2, _beta, _mean, _std in active_pairs:
-            data = handler.load_pair_data("A", "B", test_start, test_end)
+            data = master.loc[test_start:test_end, ["A", "B"]].dropna()
             bt = PairBacktester(
                 data,
                 beta=_beta,
@@ -91,7 +94,7 @@ def manual_walk_forward(handler: DataHandler, cfg: AppConfig) -> dict:
     }
 
 
-def test_walk_forward(monkeypatch, tmp_path: Path) -> None:
+def test_walk_forward(tmp_path: Path) -> None:
     create_dataset(tmp_path)
     cfg = AppConfig(
         data_dir=tmp_path,
@@ -127,22 +130,8 @@ def test_walk_forward(monkeypatch, tmp_path: Path) -> None:
         ),
     )
 
-    calls = []
-
-    def fake_find_pairs(handler, start, end, cfg_arg):
-        calls.append((pd.Timestamp(start), pd.Timestamp(end)))
-        df = handler.load_pair_data("A", "B", start, end)
-        beta = df["A"].cov(df["B"]) / df["B"].var()
-        spread = df["A"] - beta * df["B"]
-        mean = spread.mean()
-        std = spread.std()
-        return [("A", "B", beta, mean, std)]
-
-    monkeypatch.setattr(wf, "find_cointegrated_pairs", fake_find_pairs)
-
     metrics = wf.run_walk_forward(cfg)
 
     expected_metrics = manual_walk_forward(DataHandler(cfg), cfg)
 
     assert metrics == expected_metrics
-    assert len(calls) == 2

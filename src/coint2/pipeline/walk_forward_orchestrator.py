@@ -8,8 +8,7 @@ import pandas as pd
 
 from coint2.core.data_loader import DataHandler
 from coint2.engine.backtest_engine import PairBacktester
-from coint2.pipeline.pair_scanner import find_cointegrated_pairs
-from coint2.core import performance
+from coint2.core import performance, math_utils
 from coint2.utils.config import AppConfig
 from coint2.utils.logging_utils import get_logger
 
@@ -23,6 +22,9 @@ def run_walk_forward(cfg: AppConfig) -> Dict[str, float]:
 
     start_date = pd.to_datetime(cfg.walk_forward.start_date)
     end_date = pd.to_datetime(cfg.walk_forward.end_date)
+
+    full_range_start = start_date - pd.Timedelta(days=cfg.walk_forward.training_period_days)
+    master_df = handler.preload_all_data(full_range_start, end_date)
 
     current_date = start_date
     aggregated_pnl = pd.Series(dtype=float)
@@ -44,12 +46,26 @@ def run_walk_forward(cfg: AppConfig) -> Dict[str, float]:
         if testing_end > end_date:
             break
 
-        pairs = find_cointegrated_pairs(
-            handler,
-            training_start,
-            training_end,
-            cfg,
-        )
+        training_slice = master_df.loc[training_start:training_end]
+        if training_slice.empty or len(training_slice.columns) < 2:
+            pairs = []
+        else:
+            normalized_training = (training_slice - training_slice.min()) / (
+                training_slice.max() - training_slice.min()
+            )
+            ssd = math_utils.calculate_ssd(
+                normalized_training, top_k=cfg.pair_selection.ssd_top_n
+            )
+            pairs = []
+            for s1, s2 in ssd.index:
+                pair_train = training_slice[[s1, s2]].dropna()
+                if pair_train.empty or pair_train[s2].var() == 0:
+                    continue
+                beta = pair_train[s1].cov(pair_train[s2]) / pair_train[s2].var()
+                spread = pair_train[s1] - beta * pair_train[s2]
+                mean = spread.mean()
+                std = spread.std()
+                pairs.append((s1, s2, beta, mean, std))
 
         logger.info(
             "Walk-forward step train %s-%s, test %s-%s, %d pairs",
@@ -74,7 +90,7 @@ def run_walk_forward(cfg: AppConfig) -> Dict[str, float]:
             capital_per_pair = 0.0
 
         for s1, s2, beta, mean, std in active_pairs:
-            pair_data = handler.load_pair_data(s1, s2, testing_start, testing_end)
+            pair_data = master_df.loc[testing_start:testing_end, [s1, s2]].dropna()
             bt = PairBacktester(
                 pair_data,
                 beta=beta,

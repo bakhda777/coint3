@@ -145,3 +145,27 @@ class DataHandler:
 
         normalized = wide_df.apply(_normalize, axis=0)
         return normalized
+
+    def preload_all_data(
+        self, start_date: pd.Timestamp, end_date: pd.Timestamp
+    ) -> pd.DataFrame:
+        """Loads and pivots all data for a given wide date range."""
+
+        if not self.data_dir.exists():
+            return pd.DataFrame()
+
+        ddf = dd.read_parquet(self.data_dir, engine="pyarrow")
+        if not ddf.columns:
+            return pd.DataFrame()
+
+        filtered_ddf = ddf[(ddf["timestamp"] >= start_date) & (ddf["timestamp"] <= end_date)]
+
+        wide_ddf = filtered_ddf.pivot_table(
+            index="timestamp", columns="symbol", values="close"
+        )
+
+        wide_pdf = wide_ddf.compute()
+        if wide_pdf.empty:
+            return pd.DataFrame()
+
+        return wide_pdf.sort_index()
