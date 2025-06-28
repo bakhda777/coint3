@@ -27,6 +27,9 @@ def run_walk_forward(cfg: AppConfig) -> Dict[str, float]:
     current_date = start_date
     aggregated_pnl = pd.Series(dtype=float)
 
+    equity = cfg.portfolio.initial_capital
+    equity_curve = [equity]
+
     while current_date < end_date:
         training_start = current_date
         training_end = training_start + pd.Timedelta(
@@ -57,8 +60,20 @@ def run_walk_forward(cfg: AppConfig) -> Dict[str, float]:
             len(pairs),
         )
 
+        sorted_pairs = sorted(pairs)
+        active_pairs = sorted_pairs[: cfg.portfolio.max_active_positions]
+
+        total_risk_capital = equity * cfg.portfolio.risk_per_trade_pct
+
         step_pnl = pd.Series(dtype=float)
-        for s1, s2, beta, mean, std in pairs:
+        total_step_pnl = 0.0
+
+        if active_pairs:
+            capital_per_pair = total_risk_capital / len(active_pairs)
+        else:
+            capital_per_pair = 0.0
+
+        for s1, s2, beta, mean, std in active_pairs:
             pair_data = handler.load_pair_data(s1, s2, testing_start, testing_end)
             bt = PairBacktester(
                 pair_data,
@@ -71,9 +86,13 @@ def run_walk_forward(cfg: AppConfig) -> Dict[str, float]:
                 annualizing_factor=cfg.backtest.annualizing_factor,
             )
             bt.run()
-            step_pnl = step_pnl.add(bt.get_results()["pnl"], fill_value=0)
+            pnl_series = bt.get_results()["pnl"] * capital_per_pair
+            step_pnl = step_pnl.add(pnl_series, fill_value=0)
+            total_step_pnl += pnl_series.sum()
 
         aggregated_pnl = pd.concat([aggregated_pnl, step_pnl])
+        equity += total_step_pnl
+        equity_curve.append(equity)
 
         current_date = testing_end
 
