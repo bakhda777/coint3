@@ -1,5 +1,6 @@
 import pandas as pd
 from pathlib import Path
+import pytest
 
 from itertools import combinations
 
@@ -28,11 +29,15 @@ def test_find_cointegrated_pairs(tmp_path: Path) -> None:
     data = handler.load_all_data_for_period(lookback_days=20)
 
     # reference sequential implementation
-    expected: list[tuple[str, str]] = []
+    expected: dict[tuple[str, str], tuple[float, float, float]] = {}
     for s1, s2 in combinations(data.columns, 2):
-        pval = _coint_test(data[s1].dropna(), data[s2].dropna())
+        s1_series = data[s1].dropna()
+        s2_series = data[s2].dropna()
+        pval = _coint_test(s1_series, s2_series)
         if pval < 0.05:
-            expected.append((s1, s2))
+            beta = s1_series.cov(s2_series) / s2_series.var()
+            spread = s1_series - beta * s2_series
+            expected[(s1, s2)] = (beta, spread.mean(), spread.std())
 
     start = data.index.min()
     end = data.index.max()
