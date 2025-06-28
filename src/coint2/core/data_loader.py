@@ -4,8 +4,12 @@ from pathlib import Path
 from typing import List
 import time
 import numpy as np
+import logging
 
 from coint2.utils.config import AppConfig
+
+# Настройка логгера
+logger = logging.getLogger(__name__)
 
 
 class DataHandler:
@@ -66,19 +70,21 @@ class DataHandler:
             try:
                 # Запасной вариант: использование glob для обхода всех файлов
                 import glob
-                import pandas as pd
-                from pathlib import Path
-                import dask.dataframe as dd
-                
+                # Пробуем загрузить файлы вручную через pandas, если dd.read_parquet не работает
+                # Используем существующий импорт dd на уровне модуля
+                dfs = []
                 print("Попытка загрузки через glob-обход файлов...")
                 
                 # Собираем все файлы data.parquet рекурсивно
                 parquet_files = glob.glob(str(self.data_dir) + "/**/data.parquet", recursive=True)
                 if not parquet_files:
-                    print("Не найдены файлы data.parquet")
-                    return dd.from_pandas(pd.DataFrame(), npartitions=1)
-                    
-                print(f"Найдено {len(parquet_files)} файлов data.parquet")
+                    print(f"Не найдено ни одного parquet файла в {self.data_dir}")
+                    return dd.DataFrame()
+                
+                print(f"Найдено {len(parquet_files)} файлов parquet")
+                
+                # Словарь для отслеживания проанализированных символов для диагностики
+                analyzed_symbols = set()
                 
                 # Создаем список Dask DataFrame из каждого файла
                 dfs = []
@@ -98,11 +104,45 @@ class DataHandler:
                             columns=["timestamp", "close"]
                         )
                         
-                        # Диагностическая информация о формате timestamp (только для выбранного файла)
-                        if not file_df.empty and path.parent.parent.parent.name == "symbol=BTCUSDT" and path.parent.parent.name == "year=2022" and path.parent.name == "month=01":
+                        # Диагностическая информация о формате timestamp для первого файла каждого символа
+                        # Извлекаем имя символа из пути
+                        symbol_dir = path.parent.parent.parent.name
+                        current_symbol = symbol_dir.replace("symbol=", "")
+                        
+                        # Проверяем, не анализировали ли мы уже этот символ и является ли дата в нужном диапазоне
+                        if not file_df.empty and current_symbol not in analyzed_symbols and pd.Timestamp('2022-01-01') <= file_df['timestamp'].min() <= pd.Timestamp('2022-12-31'):
+                            analyzed_symbols.add(current_symbol)
+                            print(f"\nDEBUG: Анализ формата данных для символа {current_symbol}")
                             print(f"DEBUG: Файл {file_path}")
                             print(f"DEBUG: Тип timestamp: {type(file_df['timestamp'].iloc[0])}")
                             print(f"DEBUG: Первые timestamp: {file_df['timestamp'].head(3).tolist()}")
+                            
+                            # Проверка 15-минутных интервалов
+                            if len(file_df) >= 10:
+                                sorted_ts = file_df['timestamp'].sort_values().reset_index(drop=True)
+                                print(f"DEBUG: Детальные timestamp (первые 10): {sorted_ts[:10].tolist()}")
+                                
+                                # Проверяем разницу между соседними метками времени
+                                diffs = []
+                                for i in range(1, min(10, len(sorted_ts))):
+                                    diff = (sorted_ts.iloc[i] - sorted_ts.iloc[i-1]).total_seconds() / 60
+                                    diffs.append(diff)
+                                print(f"DEBUG: Интервалы между записями (в минутах): {diffs}")
+                                print(f"DEBUG: Часы для первых 10 записей: {[ts.hour for ts in sorted_ts[:min(10, len(sorted_ts))]]}")
+                                print(f"DEBUG: Минуты для первых 10 записей: {[ts.minute for ts in sorted_ts[:min(10, len(sorted_ts))]]}")
+                                
+                                # Хистограмма часов и минут
+                                hours_count = file_df['timestamp'].dt.hour.value_counts().sort_index()
+                                minutes_count = file_df['timestamp'].dt.minute.value_counts().sort_index()
+                                print(f"DEBUG: Уникальные значения часов: {list(hours_count.index)}")
+                                print(f"DEBUG: Уникальные значения минут: {list(minutes_count.index)}")
+                                
+                                # Проверка на 15-минутные интервалы
+                                expected_minutes = [0, 15, 30, 45]
+                                is_15min = all(minute in expected_minutes for minute in minutes_count.index)
+                                print(f"DEBUG: Данные соответствуют 15-минутным интервалам: {is_15min}")
+                            else:
+                                print(f"DEBUG: Файл содержит слишком мало записей для анализа интервалов")
                         
                         # Преобразуем timestamp в datetime для всех файлов, если это число
                         if not file_df.empty and isinstance(file_df['timestamp'].iloc[0], (int, float, np.integer, np.floating)):
@@ -116,11 +156,11 @@ class DataHandler:
                                 if path.parent.parent.parent.name == "symbol=BTCUSDT" and path.parent.parent.name == "year=2022" and path.parent.name == "month=01":
                                     print(f"DEBUG: Преобразован timestamp из секунд: {file_df['timestamp'].head(3)}")
                         
-                        # Если timestamp уже в формате datetime, убедимся что timezone установлен
+                        # Убедимся, что все timestamp в наивном формате (без timezone)
                         if not file_df.empty and isinstance(file_df['timestamp'].iloc[0], pd.Timestamp):
-                            # Если нет timezone, устанавливаем UTC
-                            if file_df['timestamp'].dt.tz is None:
-                                file_df['timestamp'] = file_df['timestamp'].dt.tz_localize('UTC')
+                            # Если есть timezone, убираем его
+                            if file_df['timestamp'].dt.tz is not None:
+                                file_df['timestamp'] = file_df['timestamp'].dt.tz_localize(None)
                         
                         # Добавляем информацию о символе
                         file_df["symbol"] = symbol
@@ -194,10 +234,21 @@ class DataHandler:
         end_date: pd.Timestamp,
     ) -> pd.DataFrame:
         """Load and align data for two symbols within the given date range."""
+        # Обеспечиваем, что даты в наивном формате (без timezone)
+        if start_date.tzinfo is not None:
+            logger.debug(f"Удаляю timezone из start_date: {start_date}")
+            start_date = start_date.tz_localize(None)
+        if end_date.tzinfo is not None:
+            logger.debug(f"Удаляю timezone из end_date: {end_date}")
+            end_date = end_date.tz_localize(None)
+            
+        logger.debug(f"Загрузка данных для пары {symbol1}-{symbol2} ({start_date} - {end_date})")
+        
         ddf = self._load_full_dataset()
 
         # Проверка на пустой DataFrame
         if not ddf.columns.compute().tolist():
+            logger.debug(f"Пустой DataFrame для пары {symbol1}-{symbol2}")
             return pd.DataFrame()
             
         # Фильтруем только интересующие нас символы
@@ -208,19 +259,24 @@ class DataHandler:
 
         # Проверка на пустой результат
         if pair_pdf.empty:
+            logger.debug(f"Нет данных для пары {symbol1}-{symbol2}")
             return pd.DataFrame()
 
-        # Убедимся, что timestamp в формате datetime
+        # Убедимся, что timestamp в формате datetime и без timezone
         pair_pdf["timestamp"] = pd.to_datetime(pair_pdf["timestamp"])
         
-        # Фильтруем по диапазону дат
-        mask = (pair_pdf["timestamp"] >= pd.Timestamp(start_date)) & (
-            pair_pdf["timestamp"] <= pd.Timestamp(end_date)
-        )
+        # Удаляем timezone, если она есть
+        if hasattr(pair_pdf["timestamp"].dt, 'tz') and pair_pdf["timestamp"].dt.tz is not None:
+            logger.debug(f"Удаляем timezone из данных (была {pair_pdf['timestamp'].dt.tz})")
+            pair_pdf["timestamp"] = pair_pdf["timestamp"].dt.tz_localize(None)
+        
+        # Фильтруем по диапазону дат (теперь все наивные даты)
+        mask = (pair_pdf["timestamp"] >= start_date) & (pair_pdf["timestamp"] <= end_date)
         pair_pdf = pair_pdf.loc[mask]
 
         # Проверка на пустой результат после фильтрации
         if pair_pdf.empty:
+            logger.debug(f"Нет данных для пары {symbol1}-{symbol2} после фильтрации по дате")
             return pd.DataFrame()
 
         # Проверка на наличие дубликатов timestamp
@@ -265,10 +321,20 @@ class DataHandler:
         pd.DataFrame
             Нормализованный DataFrame с ценами (начало = 100)
         """
+        # Обеспечиваем, что даты в наивном формате (без timezone)
+        if start_date.tzinfo is not None:
+            logger.debug(f"Удаляю timezone из start_date: {start_date}")
+            start_date = start_date.tz_localize(None)
+        if end_date.tzinfo is not None:
+            logger.debug(f"Удаляю timezone из end_date: {end_date}")
+            end_date = end_date.tz_localize(None)
+            
+        logger.debug(f"Загрузка и нормализация данных за период {start_date} - {end_date}")
+        
         start_time = time.time()
         data_df = self.preload_all_data(start_date, end_date)
         elapsed_time = time.time() - start_time
-        print(f"Данные загружены за {elapsed_time:.2f} секунд. Размер: {data_df.shape}")
+        logger.info(f"Данные загружены за {elapsed_time:.2f} секунд. Размер: {data_df.shape}")
 
         # Нормализация цен
         if not data_df.empty:
@@ -305,7 +371,18 @@ class DataHandler:
         self, start_date: pd.Timestamp, end_date: pd.Timestamp
     ) -> pd.DataFrame:
         """Loads and pivots all data for a given wide date range."""
+        # Обеспечиваем, что даты в наивном формате (без timezone)
+        if start_date.tzinfo is not None:
+            logger.debug(f"Удаляю timezone из start_date в preload_all_data: {start_date}")
+            start_date = start_date.tz_localize(None)
+        if end_date.tzinfo is not None:
+            logger.debug(f"Удаляю timezone из end_date в preload_all_data: {end_date}")
+            end_date = end_date.tz_localize(None)
+            
+        logger.debug(f"Предзагрузка всех данных за период {start_date} - {end_date}")
+            
         if not self.data_dir.exists():
+            logger.warning(f"Директория данных {self.data_dir} не существует")
             return pd.DataFrame()
 
         try:
@@ -314,16 +391,24 @@ class DataHandler:
 
             # Проверка на пустой DataFrame
             if not ddf.columns.compute().tolist():
-                print("No columns found in dataset")
+                logger.warning("No columns found in dataset")
                 return pd.DataFrame()
 
-            # Конвертируем timestamp в datetime
+            # Конвертируем timestamp в datetime БЕЗ timezone
             ddf["timestamp"] = dd.to_datetime(ddf["timestamp"])
             
-            # Фильтруем данные по заданному диапазону дат
+            # Удаляем timezone из timestamp (если есть)
+            try:
+                if hasattr(ddf["timestamp"], 'dt') and ddf["timestamp"].dt.tz is not None:
+                    logger.debug(f"Удаляем timezone из данных в Dask DF")
+                    ddf["timestamp"] = ddf["timestamp"].dt.tz_localize(None)
+            except (AttributeError, TypeError) as e:
+                logger.debug(f"Не удалось проверить timezone в Dask DataFrame: {str(e)}")
+            
+            # Фильтруем данные по заданному диапазону дат (теперь все наивные даты)
             filtered_ddf = ddf[
-                (ddf["timestamp"] >= pd.Timestamp(start_date)) & 
-                (ddf["timestamp"] <= pd.Timestamp(end_date))
+                (ddf["timestamp"] >= start_date) & 
+                (ddf["timestamp"] <= end_date)
             ]
 
             # Преобразуем в широкий формат с символами в столбцах
@@ -387,15 +472,25 @@ class DataHandler:
                             else:
                                 df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')
                         
-                        # Если timestamp уже в формате datetime, убедимся что timezone установлен
-                        elif isinstance(df['timestamp'].iloc[0], pd.Timestamp) and df['timestamp'].dt.tz is None:
-                            df['timestamp'] = df['timestamp'].dt.tz_localize('UTC')
+                        # Если timestamp уже в формате datetime, убедимся что timezone удален
+                        elif isinstance(df['timestamp'].iloc[0], pd.Timestamp) and df['timestamp'].dt.tz is not None:
+                            logger.debug(f"Удаляем timezone {df['timestamp'].dt.tz} из timestamp при ручной загрузке")
+                            df['timestamp'] = df['timestamp'].dt.tz_localize(None)
                     
                     # Фильтруем по дате используя строгое сравнение datetime
                     if not df.empty:
                         print(f"DEBUG Filter: {path}, start_date={start_date}, end_date={end_date}")
                         print(f"DEBUG Filter: timestamp type={type(df['timestamp'].iloc[0])}, first timestamp={df['timestamp'].iloc[0]}")
-                        mask = (df["timestamp"] >= pd.Timestamp(start_date)) & (df["timestamp"] <= pd.Timestamp(end_date))
+                        # Убедимся, что start_date и end_date без timezone
+                        start_date_naive = start_date.tz_localize(None) if hasattr(start_date, 'tz_localize') and start_date.tzinfo is not None else start_date
+                        end_date_naive = end_date.tz_localize(None) if hasattr(end_date, 'tz_localize') and end_date.tzinfo is not None else end_date
+                        
+                        # Убедимся, что timestamp в df без timezone
+                        if not df.empty and hasattr(df['timestamp'].iloc[0], 'tzinfo') and df['timestamp'].iloc[0].tzinfo is not None:
+                            df['timestamp'] = df['timestamp'].dt.tz_localize(None)
+                            
+                        # Теперь сравнение будет корректным (без timezone с обеих сторон)
+                        mask = (df["timestamp"] >= start_date_naive) & (df["timestamp"] <= end_date_naive)
                         filtered_df = df.loc[mask]
                         if not filtered_df.empty and path.parent.parent.parent.name == "symbol=BTCUSDT" and path.parent.parent.name == "year=2022" and path.parent.name == "month=01":
                             print(f"DEBUG Filter: Найдено {len(filtered_df)} строк после фильтрации по дате")

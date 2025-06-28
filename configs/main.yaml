@@ -9,8 +9,8 @@ pair_selection:
   coint_pvalue_threshold: 0.05
   ssd_top_n: 10000
   min_half_life_days: 1    # Минимальный период полураспада в днях
-  max_half_life_days: 30   # Максимальный период полураспада в днях
-  min_mean_crossings: 12   # Не менее 12 пересечений среднего за период калибровки
+  max_half_life_days: 60   # Максимальный период полураспада в днях (увеличен с 30 до 60)
+  min_mean_crossings: 8    # Не менее 8 пересечений среднего за период калибровки (уменьшен с 12 до 8)
 backtest:
   timeframe: "1d"
   rolling_window: 30
@@ -21,7 +21,7 @@ backtest:
   slippage_pct: 0.0005 # Новая строка: Проскальзывание 0.05%
   annualizing_factor: 365 # Новая строка: для годового Sharpe Ratio
 walk_forward:
-  start_date: "2021-01-01"
-  end_date: "2021-12-31"
-  training_period_days: 30
-  testing_period_days: 7
+  start_date: "2022-01-01"
+  end_date: "2022-12-31"
+  training_period_days: 60
+  testing_period_days: 30
