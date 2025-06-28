@@ -12,7 +12,9 @@ class PairBacktester:
         spread_mean: float,
         spread_std: float,
         z_threshold: float,
-    ):
+        commission_pct: float = 0.0,
+        slippage_pct: float = 0.0,
+    ) -> None:
         """Initialize backtester with pre-computed parameters.
 
         Parameters
@@ -35,6 +37,8 @@ class PairBacktester:
         self.std = spread_std
         self.z_threshold = z_threshold
         self.results: pd.DataFrame | None = None
+        self.commission_pct = commission_pct
+        self.slippage_pct = slippage_pct
 
     def run(self) -> None:
         """Run backtest and store results in ``self.results``."""
@@ -70,9 +74,12 @@ class PairBacktester:
         # shift position by 1 to avoid lookahead bias (входим по цене следующего периода)
         df["position"] = df["position"].shift().fillna(0)
 
-        # compute pnl
-        df["spread_return"] = df["spread"].diff()
-        df["pnl"] = df["position"] * df["spread_return"]
+        # compute pnl with transaction costs
+        df["trades"] = df["position"].diff().abs()
+        df["gross_pnl"] = df["position"] * df["spread"].diff()
+        total_cost_pct = self.commission_pct + self.slippage_pct
+        df["costs"] = df["trades"] * df["y"] * total_cost_pct
+        df["pnl"] = df["gross_pnl"] - df["costs"]
         df["cumulative_pnl"] = df["pnl"].cumsum()
 
         self.results = df

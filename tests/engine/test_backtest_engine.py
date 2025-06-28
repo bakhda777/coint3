@@ -21,6 +21,8 @@ def manual_backtest(
     mean: float,
     std: float,
     z_threshold: float,
+    commission_pct: float,
+    slippage_pct: float,
 ) -> pd.DataFrame:
     """Эталонная реализация логики бэктеста для проверки."""
     df = df.copy()
@@ -34,8 +36,11 @@ def manual_backtest(
     df.loc[df["z_score"] < -z_threshold, "signal"] = 1
     df["position"] = df["signal"].replace(to_replace=0, method="ffill").fillna(0)
     df["position"] = df["position"].shift(1).fillna(0)
-    df["spread_return"] = df["spread"].diff()
-    df["pnl"] = df["position"] * df["spread_return"]
+    df["trades"] = df["position"].diff().abs()
+    df["gross_pnl"] = df["position"] * df["spread"].diff()
+    total_cost_pct = commission_pct + slippage_pct
+    df["costs"] = df["trades"] * df[y_col] * total_cost_pct
+    df["pnl"] = df["gross_pnl"] - df["costs"]
     df["cumulative_pnl"] = df["pnl"].cumsum()
     return df
 
@@ -49,6 +54,8 @@ def test_backtester_outputs():
     })
 
     z_threshold = 1.0
+    commission = 0.001
+    slippage = 0.0005
 
     beta, mean, std = calc_params(data)
 
@@ -58,12 +65,22 @@ def test_backtester_outputs():
         spread_mean=mean,
         spread_std=std,
         z_threshold=z_threshold,
+        commission_pct=commission,
+        slippage_pct=slippage,
     )
     bt.run()
     result = bt.get_results()
 
     # Сравниваем с эталоном
-    expected = manual_backtest(data, beta, mean, std, z_threshold)
+    expected = manual_backtest(
+        data,
+        beta,
+        mean,
+        std,
+        z_threshold,
+        commission_pct=commission,
+        slippage_pct=slippage,
+    )
     expected_for_comparison = expected[["spread", "z_score", "position", "pnl", "cumulative_pnl"]]
     
     pd.testing.assert_frame_equal(result, expected_for_comparison)
