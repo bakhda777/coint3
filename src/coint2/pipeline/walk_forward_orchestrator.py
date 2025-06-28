@@ -19,6 +19,7 @@ def run_walk_forward(cfg: AppConfig) -> Dict[str, float]:
     logger = get_logger("walk_forward")
 
     handler = DataHandler(cfg)
+    handler.clear_cache()
 
     start_date = pd.to_datetime(cfg.walk_forward.start_date)
     end_date = pd.to_datetime(cfg.walk_forward.end_date)

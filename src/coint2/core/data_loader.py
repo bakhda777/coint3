@@ -15,6 +15,10 @@ class DataHandler:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self._all_data_cache: dd.DataFrame | None = None
 
+    def clear_cache(self) -> None:
+        """Clears the in-memory Dask DataFrame cache."""
+        self._all_data_cache = None
+
     def get_all_symbols(self) -> List[str]:
         """Return list of symbols based on partition directory names."""
         if not self.data_dir.exists():
