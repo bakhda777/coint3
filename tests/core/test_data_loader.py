@@ -162,3 +162,56 @@ def test_load_and_normalize_data(tmp_path: Path) -> None:
     assert (result >= 0).all().all()
     assert (result <= 1).all().all()
 
+
+def test_clear_cache(tmp_path: Path) -> None:
+    create_dataset(tmp_path)
+    cfg = AppConfig(
+        data_dir=tmp_path,
+        results_dir=tmp_path,
+        pair_selection=PairSelectionConfig(
+            lookback_days=1,
+            coint_pvalue_threshold=0.05,
+            ssd_top_n=1,
+        ),
+        backtest=BacktestConfig(
+            timeframe="1d",
+            rolling_window=1,
+            zscore_threshold=1.0,
+            fill_limit_pct=0.1,
+            commission_pct=0.0,
+            slippage_pct=0.0,
+            annualizing_factor=365,
+        ),
+        walk_forward=WalkForwardConfig(
+            start_date="2021-01-01",
+            end_date="2021-01-02",
+            training_period_days=1,
+            testing_period_days=1,
+        ),
+    )
+    handler = DataHandler(cfg)
+
+    initial = handler.load_all_data_for_period(lookback_days=10)
+    assert "CCC" not in initial.columns
+
+    idx = pd.date_range("2021-01-01", periods=5, freq="D")
+    part_dir = tmp_path / "symbol=CCC" / "year=2021" / "month=01"
+    part_dir.mkdir(parents=True, exist_ok=True)
+    df = pd.DataFrame({"timestamp": idx, "close": range(5)})
+    df.to_parquet(part_dir / "data.parquet")
+
+    handler.clear_cache()
+    result = handler.load_all_data_for_period(lookback_days=10)
+
+    pdf = pd.read_parquet(tmp_path, engine="pyarrow")
+    pdf["timestamp"] = pd.to_datetime(pdf["timestamp"])
+    pdf = pdf.sort_values("timestamp")
+    end_date = pdf["timestamp"].max()
+    start_date = end_date - pd.Timedelta(days=10)
+    filtered = pdf[pdf["timestamp"] >= start_date]
+    expected = filtered.pivot_table(index="timestamp", columns="symbol", values="close")
+    expected = expected.sort_index()
+
+    pd.testing.assert_frame_equal(result, expected)
+    assert "CCC" in result.columns
+
