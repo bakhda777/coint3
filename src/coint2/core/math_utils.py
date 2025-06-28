@@ -56,31 +56,62 @@ def rolling_zscore(series: pd.Series, window: int) -> pd.Series:
     return (series - mean) / std
 
 
-def calculate_ssd(normalized_prices: pd.DataFrame) -> pd.Series:
-    """Compute pairwise sum of squared differences (SSD) between columns.
+def calculate_ssd(
+    normalized_prices: pd.DataFrame,
+    top_k: int,
+    block_size: int = 512,
+) -> pd.Series:
+    """Compute top-K pairwise SSDs using a memory-efficient block approach."""
 
-    Parameters
-    ----------
-    normalized_prices : pd.DataFrame
-        DataFrame where each column is a normalized price series for a ticker.
+    cols = normalized_prices.columns.to_numpy()
+    all_pairs: list[tuple[int, int, float]] = []
 
-    Returns
-    -------
-    pd.Series
-        Series indexed by ``(symbol1, symbol2)`` with SSD values sorted in
-        ascending order.
-    """
-    data = normalized_prices.to_numpy()
-    columns = normalized_prices.columns
+    num_cols = len(cols)
 
-    dot_matrix = data.T @ data
-    sum_sq = np.diag(dot_matrix)
-    ssd_matrix = sum_sq[:, None] + sum_sq[None, :] - 2 * dot_matrix
+    for i0 in range(0, num_cols, block_size):
+        i1 = min(i0 + block_size, num_cols)
+        a = normalized_prices.iloc[:, i0:i1].to_numpy()
 
-    i_upper, j_upper = np.triu_indices_from(ssd_matrix, k=1)
-    pairs = pd.MultiIndex.from_arrays([columns[i_upper], columns[j_upper]])
-    ssd_values = ssd_matrix[i_upper, j_upper]
-    return pd.Series(ssd_values, index=pairs).sort_values()
+        for j0 in range(i0, num_cols, block_size):
+            j1 = min(j0 + block_size, num_cols)
+            b = normalized_prices.iloc[:, j0:j1].to_numpy()
+
+            ssd_block = ((a[:, :, None] - b[:, None, :]) ** 2).sum(axis=0)
+
+            if i0 == j0:
+                if ssd_block.shape[0] == ssd_block.shape[1]:
+                    indices = np.triu_indices_from(ssd_block, k=1)
+                    block_pairs = list(
+                        zip(
+                            indices[0] + i0,
+                            indices[1] + j0,
+                            ssd_block[indices],
+                        )
+                    )
+                else:
+                    block_pairs = []
+            else:
+                idx_a, idx_b = np.indices(ssd_block.shape)
+                block_pairs = list(
+                    zip(
+                        idx_a.ravel() + i0,
+                        idx_b.ravel() + j0,
+                        ssd_block.ravel(),
+                    )
+                )
+
+            all_pairs.extend(block_pairs)
+
+            if len(all_pairs) > top_k * 2:
+                all_pairs = sorted(all_pairs, key=lambda x: x[2])[:top_k]
+
+    all_pairs = sorted(all_pairs, key=lambda x: x[2])[:top_k]
+
+    multi_index = pd.MultiIndex.from_tuples(
+        [(cols[i], cols[j]) for i, j, _ in all_pairs]
+    )
+
+    return pd.Series([ssd for _, _, ssd in all_pairs], index=multi_index)
 
 
 def calculate_half_life(series: pd.Series) -> float:
