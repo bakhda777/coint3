@@ -29,7 +29,10 @@ def manual_backtest(
     y_col, x_col = df.columns[0], df.columns[1]
 
     df["spread"] = df[y_col] - beta * df[x_col]
-    df["z_score"] = (df["spread"] - mean) / std
+    if std == 0:
+        df["z_score"] = 0.0
+    else:
+        df["z_score"] = (df["spread"] - mean) / std
     
     df["signal"] = 0
     df.loc[df["z_score"] > z_threshold, "signal"] = -1
@@ -39,7 +42,8 @@ def manual_backtest(
     df["trades"] = df["position"].diff().abs()
     df["gross_pnl"] = df["position"] * df["spread"].diff()
     total_cost_pct = commission_pct + slippage_pct
-    df["costs"] = df["trades"] * df[y_col] * total_cost_pct
+    trade_value = df[y_col] + (df[x_col] * abs(beta))
+    df["costs"] = df["trades"] * trade_value * total_cost_pct
     df["pnl"] = df["gross_pnl"] - df["costs"]
     df["cumulative_pnl"] = df["pnl"].cumsum()
     return df
@@ -105,3 +109,40 @@ def test_backtester_outputs():
     assert np.isclose(metrics["sharpe_ratio"], expected_metrics["sharpe_ratio"])
     assert np.isclose(metrics["max_drawdown"], expected_metrics["max_drawdown"])
     assert np.isclose(metrics["total_pnl"], expected_metrics["total_pnl"])
+
+
+def test_zero_std_handling() -> None:
+    """Проверяет корректность работы при нулевом стандартном отклонении спреда."""
+    data = pd.DataFrame({"Y": 2 * np.arange(1, 11), "X": np.arange(1, 11)})
+
+    beta, mean, std = calc_params(data)
+    assert std == 0
+
+    bt = PairBacktester(
+        data,
+        beta=beta,
+        spread_mean=mean,
+        spread_std=std,
+        z_threshold=1.0,
+        commission_pct=0.001,
+        slippage_pct=0.0005,
+        annualizing_factor=365,
+    )
+    bt.run()
+    result = bt.get_results()
+
+    expected = manual_backtest(
+        data,
+        beta,
+        mean,
+        std,
+        1.0,
+        commission_pct=0.001,
+        slippage_pct=0.0005,
+    )
+    expected_for_comparison = expected[["spread", "z_score", "position", "pnl", "cumulative_pnl"]]
+
+    pd.testing.assert_frame_equal(result, expected_for_comparison)
+
+    metrics = bt.get_performance_metrics()
+    assert metrics == {"sharpe_ratio": 0.0, "max_drawdown": 0.0, "total_pnl": 0.0}

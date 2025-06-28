@@ -62,7 +62,10 @@ class PairBacktester:
         df["spread"] = df["y"] - self.beta * df["x"]
 
         # z-score using fixed mean and std from training period
-        df["z_score"] = (df["spread"] - self.mean) / self.std
+        if self.std == 0:
+            df["z_score"] = 0.0
+        else:
+            df["z_score"] = (df["spread"] - self.mean) / self.std
 
         # generate long/short signals: long when z_score < -threshold, short when z_score > threshold
         df["signal"] = 0
@@ -80,7 +83,8 @@ class PairBacktester:
         df["trades"] = df["position"].diff().abs()
         df["gross_pnl"] = df["position"] * df["spread"].diff()
         total_cost_pct = self.commission_pct + self.slippage_pct
-        df["costs"] = df["trades"] * df["y"] * total_cost_pct
+        trade_value = df["y"] + (df["x"] * abs(self.beta))
+        df["costs"] = df["trades"] * trade_value * total_cost_pct
         df["pnl"] = df["gross_pnl"] - df["costs"]
         df["cumulative_pnl"] = df["pnl"].cumsum()
 
