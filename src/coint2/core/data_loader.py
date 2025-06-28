@@ -99,3 +99,40 @@ class DataHandler:
         wide_df = wide_df.ffill(limit=limit).bfill(limit=limit)
 
         return wide_df[[symbol1, symbol2]].dropna()
+
+    def load_and_normalize_data(
+        self, start_date: pd.Timestamp, end_date: pd.Timestamp
+    ) -> pd.DataFrame:
+        """Load data for all symbols in the range and normalize each column."""
+        ddf = self._load_full_dataset()
+
+        if not ddf.columns:
+            return pd.DataFrame()
+
+        pdf = ddf.compute()
+        if pdf.empty:
+            return pd.DataFrame()
+
+        pdf["timestamp"] = pd.to_datetime(pdf["timestamp"])
+        mask = (pdf["timestamp"] >= pd.Timestamp(start_date)) & (
+            pdf["timestamp"] <= pd.Timestamp(end_date)
+        )
+        pdf = pdf.loc[mask]
+
+        if pdf.empty:
+            return pd.DataFrame()
+
+        wide_df = pdf.pivot_table(index="timestamp", columns="symbol", values="close")
+        wide_df = wide_df.sort_index()
+        if wide_df.empty:
+            return pd.DataFrame()
+
+        def _normalize(series: pd.Series) -> pd.Series:
+            max_val = series.max()
+            min_val = series.min()
+            if pd.isna(max_val) or pd.isna(min_val) or max_val == min_val:
+                return pd.Series(0.0, index=series.index)
+            return (series - min_val) / (max_val - min_val)
+
+        normalized = wide_df.apply(_normalize, axis=0)
+        return normalized
