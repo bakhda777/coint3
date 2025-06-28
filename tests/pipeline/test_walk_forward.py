@@ -4,7 +4,13 @@ from pathlib import Path
 from coint2.core.data_loader import DataHandler
 from coint2.engine.backtest_engine import PairBacktester
 from coint2.pipeline import walk_forward_orchestrator as wf
-from coint2.utils.config import AppConfig, PairSelectionConfig, BacktestConfig, WalkForwardConfig
+from coint2.utils.config import (
+    AppConfig,
+    PairSelectionConfig,
+    BacktestConfig,
+    WalkForwardConfig,
+    PortfolioConfig,
+)
 from coint2.core import performance
 
 
@@ -67,6 +73,11 @@ def test_walk_forward(monkeypatch, tmp_path: Path) -> None:
     cfg = AppConfig(
         data_dir=tmp_path,
         results_dir=tmp_path / "results",
+        portfolio=PortfolioConfig(
+            initial_capital=10000.0,
+            risk_per_trade_pct=0.01,
+            max_active_positions=5,
+        ),
         pair_selection=PairSelectionConfig(
             lookback_days=5, coint_pvalue_threshold=0.05, ssd_top_n=1
         ),
@@ -74,6 +85,7 @@ def test_walk_forward(monkeypatch, tmp_path: Path) -> None:
             timeframe="1d",
             rolling_window=3,
             zscore_threshold=1.0,
+            stop_loss_multiplier=3.0,
             fill_limit_pct=0.0,
             commission_pct=0.001,
             slippage_pct=0.0005,
