@@ -80,3 +80,58 @@ def calculate_ssd(normalized_prices: pd.DataFrame) -> pd.Series:
     pairs = pd.MultiIndex.from_arrays([columns[i_upper], columns[j_upper]])
     ssd_values = ssd_matrix[i_upper, j_upper]
     return pd.Series(ssd_values, index=pairs).sort_values()
+
+
+def calculate_half_life(series: pd.Series) -> float:
+    """Estimate the half-life of mean reversion for a time series.
+
+    The half-life represents the time it takes for a deviation from the
+    mean to reduce by half assuming an Ornstein-Uhlenbeck process. The
+    implementation follows the common approach of regressing the first
+    difference of the series on its lagged values.
+
+    Parameters
+    ----------
+    series : pd.Series
+        Input time series.
+
+    Returns
+    -------
+    float
+        Estimated half-life. ``np.inf`` is returned when the estimated
+        mean reversion speed is non-negative.
+    """
+    # align lagged series with the differenced series
+    y_lag = series.shift(1).dropna()
+    delta_y = (series - y_lag).dropna()
+    common_index = y_lag.index.intersection(delta_y.index)
+    y_lag = y_lag.loc[common_index]
+    delta_y = delta_y.loc[common_index]
+
+    # add constant and run OLS regression using a lightweight
+    # implementation to avoid external dependencies at runtime
+    try:  # pragma: no cover - use statsmodels when available
+        import statsmodels.api as sm  # type: ignore
+
+        X = sm.add_constant(y_lag.to_numpy())
+        model = sm.OLS(delta_y.to_numpy(), X)
+        result = model.fit()
+        lambda_coef = float(result.params[1])
+    except Exception:  # fallback if statsmodels is unavailable
+        X = np.column_stack([np.ones(len(y_lag)), y_lag.to_numpy()])
+        beta, *_ = np.linalg.lstsq(X, delta_y.to_numpy(), rcond=None)
+        lambda_coef = float(beta[1])
+
+    if lambda_coef >= 0:
+        return float(np.inf)
+
+    return -np.log(2.0) / lambda_coef
+
+
+def count_mean_crossings(series: pd.Series) -> int:
+    """Count how many times a series crosses its mean value."""
+
+    centered_series = series - series.mean()
+    signs = np.sign(centered_series)
+    # diff will be non-zero when sign changes
+    return int(np.where(np.diff(signs) != 0)[0].size)
