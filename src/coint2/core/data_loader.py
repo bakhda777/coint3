@@ -40,9 +40,8 @@ class DataHandler:
             self._all_data_cache = dd.from_pandas(pd.DataFrame(), npartitions=1)
             return self._all_data_cache
 
-        # FIX: Specify columns explicitly to avoid conflicts with partition
-        # columns when using the pyarrow engine. Dask will create the
-        # 'symbol' column from the directory structure automatically.
+        # FIX: Явно указываем колонки для чтения из файлов, чтобы
+        # избежать конфликтов с колонками партиций (например, 'symbol').
         ddf = dd.read_parquet(
             self.data_dir, engine="pyarrow", columns=["timestamp", "close"]
         )
@@ -64,12 +63,10 @@ class DataHandler:
         start_date = end_date - pd.Timedelta(days=lookback_days)
         filtered_ddf = ddf[ddf["timestamp"] >= start_date]
 
-        # Perform pivot table operation lazily on the Dask DataFrame
         wide_ddf = filtered_ddf.pivot_table(
             index="timestamp", columns="symbol", values="close"
         )
 
-        # Compute after pivoting to minimize memory usage
         wide_pdf = wide_ddf.compute()
         if wide_pdf.empty:
             return pd.DataFrame()
@@ -159,8 +156,8 @@ class DataHandler:
         if not self.data_dir.exists():
             return pd.DataFrame()
 
-        # FIX: Specify columns explicitly to avoid the same partition column
-        # conflict as in _load_full_dataset.
+        # FIX: Явно указываем колонки для чтения, чтобы избежать той же ошибки,
+        # что и в _load_full_dataset.
         ddf = dd.read_parquet(
             self.data_dir, engine="pyarrow", columns=["timestamp", "close"]
         )
