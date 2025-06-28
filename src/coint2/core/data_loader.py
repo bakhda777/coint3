@@ -19,6 +19,7 @@ class DataHandler:
     def __init__(self, cfg: AppConfig) -> None:
         self.data_dir = Path(cfg.data_dir)
         self.fill_limit_pct = cfg.backtest.fill_limit_pct
+        self.max_shards = cfg.max_shards
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self._all_data_cache: dd.DataFrame | None = None
 
@@ -70,21 +71,20 @@ class DataHandler:
             print(f"Ошибка загрузки данных через Dask в _load_full_dataset: {str(e)}")
             
             try:
-                # Запасной вариант: использование glob для обхода всех файлов
-                import glob
-                # Пробуем загрузить файлы вручную через pandas, если dd.read_parquet не работает
-                # Используем существующий импорт dd на уровне модуля
-                dfs = []
+                # Запасной вариант: ручной обход всех parquet-файлов
                 print("Попытка загрузки через glob-обход файлов...")
-                
-                # Собираем все файлы data.parquet рекурсивно
-                parquet_files = glob.glob(str(self.data_dir) + "/**/data.parquet", recursive=True)
+
+                # Собираем все файлы .parquet рекурсивно
+                parquet_files = [str(p) for p in Path(self.data_dir).rglob("*.parquet")]
                 if not parquet_files:
                     print(f"Не найдено ни одного parquet файла в {self.data_dir}")
 
                     return empty_ddf()
                 
                 print(f"Найдено {len(parquet_files)} файлов parquet")
+
+                if self.max_shards is not None:
+                    parquet_files = parquet_files[: self.max_shards]
                 
                 # Словарь для отслеживания проанализированных символов для диагностики
                 analyzed_symbols = set()
@@ -94,7 +94,7 @@ class DataHandler:
                 for file_path in parquet_files:
                     path = Path(file_path)
                     
-                    # Определяем symbol из пути (3 уровня вверх от файла: symbol=XXX/year=YYYY/month=MM/data.parquet)
+                    # Определяем symbol из пути (3 уровня вверх от файла: symbol=XXX/year=YYYY/month=MM/part.parquet)
                     symbol_dir = path.parent.parent.parent.name
                     symbol = symbol_dir.replace("symbol=", "")
                     
@@ -439,22 +439,21 @@ class DataHandler:
             
             try:
                 # Запасной вариант - ручной обход parquet-файлов
-                import glob
                 from pathlib import Path
-                
+
                 # Ищем все файлы .parquet рекурсивно в директории данных
-                parquet_files = glob.glob(str(self.data_dir) + "/**/data.parquet", recursive=True)
+                parquet_files = list(Path(self.data_dir).rglob("*.parquet"))
                 
                 # Создаем пустой список для хранения данных
                 dfs = []
-                
+
                 total_files = len(parquet_files)
                 print(f"Found {total_files} parquet files to process manually")
-                
-                # Ограничиваем количество файлов для быстрой загрузки
-                file_limit = min(total_files, 500)
-                
-                for file_path in parquet_files[:file_limit]:  
+
+                if self.max_shards is not None:
+                    parquet_files = parquet_files[: self.max_shards]
+
+                for file_path in parquet_files:
                     path = Path(file_path)
                     
                     # Извлекаем информацию о символе из пути

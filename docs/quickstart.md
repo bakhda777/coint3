@@ -31,6 +31,7 @@ backtest:
   rolling_window: 30
   zscore_threshold: 1.5
   fill_limit_pct: 0.2
+max_shards: null
 ```
 
 ## 3. Run the project
