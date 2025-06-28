@@ -48,7 +48,7 @@ def run_walk_forward(cfg: AppConfig) -> Dict[str, float]:
 
         training_slice = master_df.loc[training_start:training_end]
         if training_slice.empty or len(training_slice.columns) < 2:
-            pairs = []
+            pairs: list[tuple[str, str, float, float, float]] = []
         else:
             normalized_training = (training_slice - training_slice.min()) / (
                 training_slice.max() - training_slice.min()
