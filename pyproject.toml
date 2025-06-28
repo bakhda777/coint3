@@ -14,6 +14,7 @@ pyyaml = "*"
 numpy = "*"
 pandas = "*"
 scipy = "*"
+numba = "*"
 # ↓↓↓ ЭТИ ЗАВИСИМОСТИ МЫ БЕРЕМ ИЗ ВЕТКИ CODEX ↓↓↓
 pyarrow = "*"
 statsmodels = "*"

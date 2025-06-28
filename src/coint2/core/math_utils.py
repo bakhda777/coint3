@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import numpy as np  # type: ignore
 import pandas as pd  # type: ignore
+from numba import njit
 
 
 def rolling_beta(y: pd.Series, x: pd.Series, window: int) -> pd.Series:
@@ -135,3 +136,48 @@ def count_mean_crossings(series: pd.Series) -> int:
     signs = np.sign(centered_series)
     # diff will be non-zero when sign changes
     return int(np.where(np.diff(signs) != 0)[0].size)
+
+
+# --- НАЧАЛО НОВОГО КОДА ---
+
+@njit(cache=True, fastmath=True)
+def half_life_numba(y: np.ndarray) -> float:
+    """Numba-optimized half-life calculation."""
+    y_lag = y[:-1]
+    delta = np.diff(y)
+
+    # OLS regression using numpy formulas
+    cov = np.cov(delta, y_lag)[0, 1]
+    var = np.var(y_lag)
+
+    # Handle case where variance is zero or close to it
+    if np.isclose(var, 0):
+        return np.inf
+
+    lam = cov / var
+
+    return -np.log(2.0) / lam if lam < 0 else np.inf
+
+
+@njit(cache=True)
+def mean_crossings_numba(arr: np.ndarray) -> int:
+    """Numba-optimized mean crossings calculation."""
+    if arr.size < 2:
+        return 0
+
+    m = arr.mean()
+    crosses = 0
+    prev = arr[0] - m
+
+    for v in arr[1:]:
+        cur = v - m
+        # Check for sign change
+        if (prev <= 0 < cur) or (prev >= 0 > cur):
+            crosses += 1
+        # Update previous value only if it's not zero to handle multiple touches
+        if cur != 0:
+            prev = cur
+
+    return crosses
+
+# --- КОНЕЦ НОВОГО КОДА ---
