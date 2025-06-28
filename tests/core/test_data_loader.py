@@ -2,6 +2,12 @@ import pandas as pd
 from pathlib import Path
 
 from coint2.core.data_loader import DataHandler
+from coint2.utils.config import (
+    AppConfig,
+    BacktestConfig,
+    PairSelectionConfig,
+    WalkForwardConfig,
+)
 
 
 def create_dataset(tmp_path: Path) -> None:
@@ -16,7 +22,31 @@ def create_dataset(tmp_path: Path) -> None:
 
 def test_load_all_data_for_period(tmp_path: Path) -> None:
     create_dataset(tmp_path)
-    handler = DataHandler(tmp_path, "1d", fill_limit_pct=0.1)
+    cfg = AppConfig(
+        data_dir=tmp_path,
+        results_dir=tmp_path,
+        pair_selection=PairSelectionConfig(
+            lookback_days=1,
+            coint_pvalue_threshold=0.05,
+            ssd_top_n=1,
+        ),
+        backtest=BacktestConfig(
+            timeframe="1d",
+            rolling_window=1,
+            zscore_threshold=1.0,
+            fill_limit_pct=0.1,
+            commission_pct=0.0,
+            slippage_pct=0.0,
+            annualizing_factor=365,
+        ),
+        walk_forward=WalkForwardConfig(
+            start_date="2021-01-01",
+            end_date="2021-01-02",
+            training_period_days=1,
+            testing_period_days=1,
+        ),
+    )
+    handler = DataHandler(cfg)
 
     result = handler.load_all_data_for_period(lookback_days=2)
 
@@ -34,7 +64,31 @@ def test_load_all_data_for_period(tmp_path: Path) -> None:
 
 def test_load_pair_data(tmp_path: Path) -> None:
     create_dataset(tmp_path)
-    handler = DataHandler(tmp_path, "1d", fill_limit_pct=0.1)
+    cfg = AppConfig(
+        data_dir=tmp_path,
+        results_dir=tmp_path,
+        pair_selection=PairSelectionConfig(
+            lookback_days=1,
+            coint_pvalue_threshold=0.05,
+            ssd_top_n=1,
+        ),
+        backtest=BacktestConfig(
+            timeframe="1d",
+            rolling_window=1,
+            zscore_threshold=1.0,
+            fill_limit_pct=0.1,
+            commission_pct=0.0,
+            slippage_pct=0.0,
+            annualizing_factor=365,
+        ),
+        walk_forward=WalkForwardConfig(
+            start_date="2021-01-01",
+            end_date="2021-01-02",
+            training_period_days=1,
+            testing_period_days=1,
+        ),
+    )
+    handler = DataHandler(cfg)
 
     result = handler.load_pair_data(
         "AAA",
@@ -58,7 +112,31 @@ def test_load_pair_data(tmp_path: Path) -> None:
 
 def test_load_and_normalize_data(tmp_path: Path) -> None:
     create_dataset(tmp_path)
-    handler = DataHandler(tmp_path, "1d", fill_limit_pct=0.1)
+    cfg = AppConfig(
+        data_dir=tmp_path,
+        results_dir=tmp_path,
+        pair_selection=PairSelectionConfig(
+            lookback_days=1,
+            coint_pvalue_threshold=0.05,
+            ssd_top_n=1,
+        ),
+        backtest=BacktestConfig(
+            timeframe="1d",
+            rolling_window=1,
+            zscore_threshold=1.0,
+            fill_limit_pct=0.1,
+            commission_pct=0.0,
+            slippage_pct=0.0,
+            annualizing_factor=365,
+        ),
+        walk_forward=WalkForwardConfig(
+            start_date="2021-01-01",
+            end_date="2021-01-02",
+            training_period_days=1,
+            testing_period_days=1,
+        ),
+    )
+    handler = DataHandler(cfg)
 
     start = pd.Timestamp("2021-01-01")
     end = pd.Timestamp("2021-01-05")

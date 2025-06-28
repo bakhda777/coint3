@@ -61,9 +61,3 @@ def load_config(path: Path) -> AppConfig:
     with path.open("r", encoding="utf-8") as f:
         raw_cfg = yaml.safe_load(f)
     return AppConfig(**raw_cfg)
-
-
-CONFIG = load_config(
-    Path(__file__).resolve().parents[3] / "configs" / "main.yaml"
-)
-"""Singleton configuration loaded at import time."""

@@ -87,11 +87,9 @@ def test_walk_forward(monkeypatch, tmp_path: Path) -> None:
         ),
     )
 
-    monkeypatch.setattr(wf, "CONFIG", cfg)
-
     calls = []
 
-    def fake_find_pairs(handler, start, end, thr):
+    def fake_find_pairs(handler, start, end, cfg_arg):
         calls.append((pd.Timestamp(start), pd.Timestamp(end)))
         df = handler.load_pair_data("A", "B", start, end)
         beta = df["A"].cov(df["B"]) / df["B"].var()
@@ -102,12 +100,9 @@ def test_walk_forward(monkeypatch, tmp_path: Path) -> None:
 
     monkeypatch.setattr(wf, "find_cointegrated_pairs", fake_find_pairs)
 
-    metrics = wf.run_walk_forward()
+    metrics = wf.run_walk_forward(cfg)
 
-    expected_metrics = manual_walk_forward(
-        DataHandler(cfg.data_dir, cfg.backtest.timeframe, cfg.backtest.fill_limit_pct),
-        cfg,
-    )
+    expected_metrics = manual_walk_forward(DataHandler(cfg), cfg)
 
     assert metrics == expected_metrics
     assert len(calls) == 4

@@ -10,18 +10,15 @@ from coint2.core.data_loader import DataHandler
 from coint2.engine.backtest_engine import PairBacktester
 from coint2.pipeline.pair_scanner import find_cointegrated_pairs
 from coint2.core import performance
-from coint2.utils.config import CONFIG
+from coint2.utils.config import AppConfig
 from coint2.utils.logging_utils import get_logger
 
 
-def run_walk_forward() -> Dict[str, float]:
+def run_walk_forward(cfg: AppConfig) -> Dict[str, float]:
     """Run walk-forward analysis and return aggregated performance metrics."""
     logger = get_logger("walk_forward")
-    cfg = CONFIG
 
-    handler = DataHandler(
-        cfg.data_dir, cfg.backtest.timeframe, cfg.backtest.fill_limit_pct
-    )
+    handler = DataHandler(cfg)
 
     start_date = pd.to_datetime(cfg.walk_forward.start_date)
     end_date = pd.to_datetime(cfg.walk_forward.end_date)
@@ -47,7 +44,7 @@ def run_walk_forward() -> Dict[str, float]:
             handler,
             training_start,
             training_end,
-            cfg.pair_selection.coint_pvalue_threshold,
+            cfg,
         )
 
         logger.info(

@@ -25,11 +25,8 @@ def create_parquet_files(tmp_path: Path) -> None:
         df.to_parquet(part_dir / 'data.parquet')
 
 
-def test_find_cointegrated_pairs(tmp_path: Path, monkeypatch) -> None:
+def test_find_cointegrated_pairs(tmp_path: Path) -> None:
     create_parquet_files(tmp_path)
-    handler = DataHandler(tmp_path, "1d", fill_limit_pct=0.1)
-    data = handler.load_all_data_for_period(lookback_days=20)
-
     cfg = AppConfig(
         data_dir=tmp_path,
         results_dir=tmp_path,
@@ -52,8 +49,8 @@ def test_find_cointegrated_pairs(tmp_path: Path, monkeypatch) -> None:
             testing_period_days=1,
         ),
     )
-
-    monkeypatch.setattr(pair_scanner, "CONFIG", cfg)
+    handler = DataHandler(cfg)
+    data = handler.load_all_data_for_period(lookback_days=20)
 
     beta = data["A"].cov(data["B"]) / data["B"].var()
     spread = data["A"] - beta * data["B"]
@@ -61,8 +58,6 @@ def test_find_cointegrated_pairs(tmp_path: Path, monkeypatch) -> None:
 
     start = data.index.min()
     end = data.index.max()
-    pairs = pair_scanner.find_cointegrated_pairs(
-        handler, start, end, p_value_threshold=0.05
-    )
+    pairs = pair_scanner.find_cointegrated_pairs(handler, start, end, cfg)
 
     assert pairs == [expected]
