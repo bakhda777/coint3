@@ -10,4 +10,6 @@ def test_load_config():
     assert isinstance(cfg, AppConfig)
     assert cfg.pair_selection.lookback_days == 90
     assert cfg.backtest.rolling_window == 30
+    assert cfg.backtest.commission_pct == 0.001
+    assert cfg.backtest.slippage_pct == 0.0005
 

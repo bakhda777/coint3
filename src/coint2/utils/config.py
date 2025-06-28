@@ -21,6 +21,8 @@ class BacktestConfig(BaseModel):
     rolling_window: int
     zscore_threshold: float
     fill_limit_pct: float
+    commission_pct: float  # Новое поле
+    slippage_pct: float  # Новое поле
 
 
 class WalkForwardConfig(BaseModel):

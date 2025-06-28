@@ -1,7 +1,6 @@
 import pandas as pd
 from pathlib import Path
 
-import numpy as np
 
 from coint2.core.data_loader import DataHandler
 import coint2.pipeline.pair_scanner as pair_scanner
@@ -38,7 +37,12 @@ def test_find_cointegrated_pairs(tmp_path: Path, monkeypatch) -> None:
             lookback_days=20, coint_pvalue_threshold=0.05, ssd_top_n=1
         ),
         backtest=BacktestConfig(
-            timeframe="1d", rolling_window=1, zscore_threshold=1.0, fill_limit_pct=0.1
+            timeframe="1d",
+            rolling_window=1,
+            zscore_threshold=1.0,
+            fill_limit_pct=0.1,
+            commission_pct=0.001,
+            slippage_pct=0.0005,
         ),
         walk_forward=WalkForwardConfig(
             start_date="2021-01-01",

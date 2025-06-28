@@ -9,6 +9,8 @@ backtest:
   rolling_window: 30
   zscore_threshold: 1.5
   fill_limit_pct: 0.2
+  commission_pct: 0.001  # Новая строка: Комиссия 0.1%
+  slippage_pct: 0.0005 # Новая строка: Проскальзывание 0.05%
 walk_forward:
   start_date: "2021-01-01"
   end_date: "2021-12-31"
