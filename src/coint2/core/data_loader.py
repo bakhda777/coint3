@@ -7,7 +7,7 @@ import numpy as np
 import logging
 
 from coint2.utils.config import AppConfig
-from coint2.utils import empty_ddf
+from coint2.utils import empty_ddf, ensure_datetime_index, infer_frequency
 
 # Настройка логгера
 logger = logging.getLogger(__name__)
@@ -236,10 +236,9 @@ class DataHandler:
         if wide_pdf.empty:
             return pd.DataFrame()
 
-        # Сортируем по индексу (дате)
-        wide_pdf = wide_pdf.sort_index()
+        wide_pdf = ensure_datetime_index(wide_pdf)
 
-        self._freq = pd.infer_freq(wide_pdf.index)
+        self._freq = infer_frequency(wide_pdf.index)
         if self._freq:
             wide_pdf = wide_pdf.asfreq(self._freq)
 
@@ -311,7 +310,7 @@ class DataHandler:
             return pd.DataFrame()
 
         # Обработка пропущенных значений
-        freq = pd.infer_freq(wide_df.index)
+        freq = infer_frequency(wide_df.index)
         self._freq = freq
         if freq:
             wide_df = wide_df.asfreq(freq)
@@ -446,10 +445,9 @@ class DataHandler:
                 print(f"No data found between {start_date} and {end_date}")
                 return pd.DataFrame()
 
-            # Сортируем по индексу (датам)
-            wide_pdf = wide_pdf.sort_index()
+            wide_pdf = ensure_datetime_index(wide_pdf)
 
-            self._freq = pd.infer_freq(wide_pdf.index)
+            self._freq = infer_frequency(wide_pdf.index)
             if self._freq:
                 wide_pdf = wide_pdf.asfreq(self._freq)
 
@@ -539,9 +537,9 @@ class DataHandler:
                 
                 # Преобразуем в широкий формат
                 wide_df = combined_df.pivot_table(index="timestamp", columns="symbol", values="close")
-                wide_df = wide_df.sort_index()
+                wide_df = ensure_datetime_index(wide_df)
 
-                self._freq = pd.infer_freq(wide_df.index)
+                self._freq = infer_frequency(wide_df.index)
                 if self._freq:
                     wide_df = wide_df.asfreq(self._freq)
 
