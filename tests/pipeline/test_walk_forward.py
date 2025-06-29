@@ -49,13 +49,12 @@ def manual_walk_forward(handler: DataHandler, cfg: AppConfig) -> dict:
 
         pairs = [("A", "B", beta, mean, std)]
         active_pairs = pairs[: cfg.portfolio.max_active_positions]
-        total_risk_capital = equity * cfg.portfolio.risk_per_trade_pct
 
         step_pnl = pd.Series(dtype=float)
         total_step_pnl = 0.0
 
         if active_pairs:
-            capital_per_pair = total_risk_capital / len(active_pairs)
+            capital_per_pair = equity * cfg.portfolio.risk_per_position_pct
         else:
             capital_per_pair = 0.0
 
@@ -100,7 +99,7 @@ def test_walk_forward(tmp_path: Path) -> None:
         results_dir=tmp_path / "results",
         portfolio=PortfolioConfig(
             initial_capital=10000.0,
-            risk_per_trade_pct=0.01,
+            risk_per_position_pct=0.01,
             max_active_positions=5,
         ),
         pair_selection=PairSelectionConfig(

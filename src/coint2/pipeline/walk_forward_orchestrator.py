@@ -77,13 +77,11 @@ def run_walk_forward(cfg: AppConfig) -> dict[str, float]:
         sorted_pairs = sorted(pairs)
         active_pairs = sorted_pairs[: cfg.portfolio.max_active_positions]
 
-        total_risk_capital = equity * cfg.portfolio.risk_per_trade_pct
-
         step_pnl = pd.Series(dtype=float)
         total_step_pnl = 0.0
 
         if active_pairs:
-            capital_per_pair = total_risk_capital / len(active_pairs)
+            capital_per_pair = equity * cfg.portfolio.risk_per_position_pct
         else:
             capital_per_pair = 0.0
 

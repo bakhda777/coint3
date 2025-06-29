@@ -31,7 +31,7 @@ def test_load_all_data_for_period(tmp_path: Path) -> None:
         results_dir=tmp_path,
         portfolio=PortfolioConfig(
             initial_capital=10000.0,
-            risk_per_trade_pct=0.01,
+            risk_per_position_pct=0.01,
             max_active_positions=5,
         ),
         pair_selection=PairSelectionConfig(
@@ -82,7 +82,7 @@ def test_load_pair_data(tmp_path: Path) -> None:
         results_dir=tmp_path,
         portfolio=PortfolioConfig(
             initial_capital=10000.0,
-            risk_per_trade_pct=0.01,
+            risk_per_position_pct=0.01,
             max_active_positions=5,
         ),
         pair_selection=PairSelectionConfig(
@@ -139,7 +139,7 @@ def test_load_and_normalize_data(tmp_path: Path) -> None:
         results_dir=tmp_path,
         portfolio=PortfolioConfig(
             initial_capital=10000.0,
-            risk_per_trade_pct=0.01,
+            risk_per_position_pct=0.01,
             max_active_positions=5,
         ),
         pair_selection=PairSelectionConfig(
@@ -201,7 +201,7 @@ def test_clear_cache(tmp_path: Path) -> None:
         results_dir=tmp_path,
         portfolio=PortfolioConfig(
             initial_capital=10000.0,
-            risk_per_trade_pct=0.01,
+            risk_per_position_pct=0.01,
             max_active_positions=5,
         ),
         pair_selection=PairSelectionConfig(
@@ -277,7 +277,7 @@ def test_fill_limit_pct_application(tmp_path: Path) -> None:
         results_dir=tmp_path,
         portfolio=PortfolioConfig(
             initial_capital=10000.0,
-            risk_per_trade_pct=0.01,
+            risk_per_position_pct=0.01,
             max_active_positions=5,
         ),
         pair_selection=PairSelectionConfig(

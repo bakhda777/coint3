@@ -2,7 +2,7 @@ data_dir: "data_optimized"
 results_dir: "results"
 portfolio:
   initial_capital: 10000.0
-  risk_per_trade_pct: 0.01  # Риск 1% на сделку
+  risk_per_position_pct: 0.01  # Риск 1% на сделку
   max_active_positions: 5   # Торгуем не более 5 пар одновременно
 pair_selection:
   lookback_days: 90
