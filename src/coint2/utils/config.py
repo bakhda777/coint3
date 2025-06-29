@@ -21,7 +21,7 @@ class PortfolioConfig(BaseModel):
     """Configuration for portfolio and risk management."""
 
     initial_capital: float
-    risk_per_trade_pct: float
+    risk_per_position_pct: float
     max_active_positions: int
 
 

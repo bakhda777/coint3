@@ -27,7 +27,7 @@ def test_rglob_finds_all_files(tmp_path: Path) -> None:
     cfg = AppConfig(
         data_dir=tmp_path,
         results_dir=tmp_path,
-        portfolio=PortfolioConfig(initial_capital=1, risk_per_trade_pct=0.1, max_active_positions=1),
+        portfolio=PortfolioConfig(initial_capital=1, risk_per_position_pct=0.1, max_active_positions=1),
         pair_selection=PairSelectionConfig(
             lookback_days=2,
             coint_pvalue_threshold=0.05,

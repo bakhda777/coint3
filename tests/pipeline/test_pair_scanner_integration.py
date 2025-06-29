@@ -34,7 +34,7 @@ def test_find_cointegrated_pairs(monkeypatch, tmp_path: Path) -> None:
         results_dir=tmp_path,
         portfolio=PortfolioConfig(
             initial_capital=10000.0,
-            risk_per_trade_pct=0.01,
+            risk_per_position_pct=0.01,
             max_active_positions=5,
         ),
         pair_selection=PairSelectionConfig(

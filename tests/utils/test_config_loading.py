@@ -22,7 +22,7 @@ def test_load_config():
     assert cfg.backtest.slippage_pct == 0.0005
     assert cfg.backtest.annualizing_factor == 365
     assert cfg.portfolio.initial_capital == 10000.0
-    assert cfg.portfolio.risk_per_trade_pct == 0.01
+    assert cfg.portfolio.risk_per_position_pct == 0.01
     assert cfg.portfolio.max_active_positions == 5
 
 
