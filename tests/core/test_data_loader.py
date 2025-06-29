@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from pathlib import Path
 
 from coint2.core.data_loader import DataHandler
@@ -253,8 +254,22 @@ def test_clear_cache(tmp_path: Path) -> None:
     assert "CCC" in result.columns
 
 
-def test_partition_symbol_column(tmp_path: Path) -> None:
-    create_dataset(tmp_path)
+def create_large_dataset_with_gaps(tmp_path: Path) -> None:
+    idx = pd.date_range("2021-01-01", periods=100, freq="D")
+    a = pd.Series(range(100), index=idx, dtype=float)
+    b = a + 1
+    a[50:60] = np.nan
+    b[60:70] = np.nan
+    for sym, series in [("AAA", a), ("BBB", b)]:
+        part_dir = tmp_path / f"symbol={sym}" / "year=2021" / "month=01"
+        part_dir.mkdir(parents=True, exist_ok=True)
+        df = pd.DataFrame({"timestamp": idx, "close": series})
+        df.to_parquet(part_dir / "data.parquet")
+
+
+def test_fill_limit_pct_application(tmp_path: Path) -> None:
+    create_large_dataset_with_gaps(tmp_path)
+
     cfg = AppConfig(
         data_dir=tmp_path,
         results_dir=tmp_path,
@@ -283,16 +298,28 @@ def test_partition_symbol_column(tmp_path: Path) -> None:
         ),
         walk_forward=WalkForwardConfig(
             start_date="2021-01-01",
-            end_date="2021-01-02",
+
+            end_date="2021-04-10",
+
             training_period_days=1,
             testing_period_days=1,
         ),
     )
     handler = DataHandler(cfg)
 
-    ddf = handler._load_full_dataset()
-    assert "symbol" in ddf.columns
+    start = pd.Timestamp("2021-01-01")
+    end = pd.Timestamp("2021-04-10")
+    result = handler.load_pair_data("AAA", "BBB", start, end)
 
-    pdf = ddf.compute()
-    assert "symbol" in pdf.columns
+    expected_a = pd.Series(np.arange(100, dtype=float), index=pd.date_range("2021-01-01", periods=100, freq="D"))
+    expected_b = expected_a + 1
+    expected_a[50:60] = np.nan
+    expected_b[60:70] = np.nan
+    expected = pd.DataFrame({"AAA": expected_a, "BBB": expected_b})
+    limit = int(len(expected) * 0.1)
+    expected = expected.ffill(limit=limit).bfill(limit=limit)
+    expected = expected[["AAA", "BBB"]].dropna()
+
+    pd.testing.assert_frame_equal(result, expected)
+
 

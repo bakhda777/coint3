@@ -30,7 +30,7 @@ backtest:
   timeframe: "1d"
   rolling_window: 30
   zscore_threshold: 1.5
-  fill_limit_pct: 0.2
+  fill_limit_pct: 0.2  # доля подряд идущих пропусков, заполняемых при ffill/bfill
 max_shards: null
 ```
 

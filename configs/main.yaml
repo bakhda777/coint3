@@ -16,7 +16,7 @@ backtest:
   rolling_window: 30
   zscore_threshold: 1.5
   stop_loss_multiplier: 3.0 # Стоп-лосс на уровне 3-х стандартных отклонений
-  fill_limit_pct: 0.2
+  fill_limit_pct: 0.2 # доля подряд идущих пропусков для ffill/bfill
   commission_pct: 0.001  # Новая строка: Комиссия 0.1%
   slippage_pct: 0.0005 # Новая строка: Проскальзывание 0.05%
   annualizing_factor: 365 # Новая строка: для годового Sharpe Ratio
