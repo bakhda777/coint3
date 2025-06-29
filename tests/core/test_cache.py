@@ -22,7 +22,7 @@ def create_dataset(tmp_path: Path) -> None:
         df.to_parquet(part_dir / "data.parquet")
 
 
-def make_cfg(tmp_path: Path) -> AppConfig:
+def make_cfg(tmp_path: Path, lookback_days: int = 1) -> AppConfig:
     return AppConfig(
         data_dir=tmp_path,
         results_dir=tmp_path,
@@ -32,7 +32,7 @@ def make_cfg(tmp_path: Path) -> AppConfig:
             max_active_positions=5,
         ),
         pair_selection=PairSelectionConfig(
-            lookback_days=1,
+            lookback_days=lookback_days,
             coint_pvalue_threshold=0.05,
             ssd_top_n=1,
             min_half_life_days=1,
@@ -60,7 +60,7 @@ def make_cfg(tmp_path: Path) -> AppConfig:
 
 def test_load_all_data_cache(monkeypatch, tmp_path: Path) -> None:
     create_dataset(tmp_path)
-    cfg = make_cfg(tmp_path)
+    cfg = make_cfg(tmp_path, lookback_days=2)
     handler = DataHandler(cfg)
 
     calls = 0
@@ -73,26 +73,26 @@ def test_load_all_data_cache(monkeypatch, tmp_path: Path) -> None:
 
     monkeypatch.setattr(dd, "read_parquet", counting_read_parquet)
 
-    handler.load_all_data_for_period(lookback_days=2)
+    handler.load_all_data_for_period()
     assert calls == 1
 
-    handler.load_all_data_for_period(lookback_days=2)
+    handler.load_all_data_for_period()
     assert calls == 1
 
 
 def test_threaded_cache_reload(tmp_path: Path) -> None:
     create_dataset(tmp_path)
-    cfg = make_cfg(tmp_path)
+    cfg = make_cfg(tmp_path, lookback_days=2)
     handler = DataHandler(cfg)
 
     # preload and then clear to force reload
-    handler.load_all_data_for_period(lookback_days=2)
+    handler.load_all_data_for_period()
     handler.clear_cache()
 
     results: list[pd.DataFrame] = []
 
     def worker() -> None:
-        results.append(handler.load_all_data_for_period(lookback_days=2))
+        results.append(handler.load_all_data_for_period())
 
     threads = [threading.Thread(target=worker) for _ in range(2)]
     for t in threads:

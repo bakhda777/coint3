@@ -23,7 +23,7 @@ def create_dataset_with_duplicates(tmp_path: Path) -> None:
         df.to_parquet(part_dir / "data.parquet")
 
 
-def _create_handler(tmp_path: Path) -> DataHandler:
+def _create_handler(tmp_path: Path, lookback_days: int = 1) -> DataHandler:
     cfg = AppConfig(
         data_dir=tmp_path,
         results_dir=tmp_path,
@@ -33,7 +33,7 @@ def _create_handler(tmp_path: Path) -> DataHandler:
             max_active_positions=5,
         ),
         pair_selection=PairSelectionConfig(
-            lookback_days=1,
+            lookback_days=lookback_days,
             coint_pvalue_threshold=0.05,
             ssd_top_n=1,
             min_half_life_days=1,
@@ -62,9 +62,9 @@ def _create_handler(tmp_path: Path) -> DataHandler:
 
 def test_pivot(tmp_path: Path) -> None:
     create_dataset_with_duplicates(tmp_path)
-    handler = _create_handler(tmp_path)
+    handler = _create_handler(tmp_path, lookback_days=3)
 
-    result = handler.load_all_data_for_period(lookback_days=3)
+    result = handler.load_all_data_for_period()
 
     pdf = pd.read_parquet(tmp_path, engine="pyarrow")
     pdf["timestamp"] = pd.to_datetime(pdf["timestamp"])
