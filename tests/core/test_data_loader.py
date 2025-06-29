@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 from pathlib import Path
 
 from coint2.core.data_loader import DataHandler
@@ -251,4 +252,70 @@ def test_clear_cache(tmp_path: Path) -> None:
 
     pd.testing.assert_frame_equal(result, expected)
     assert "CCC" in result.columns
+
+
+def create_large_dataset_with_gaps(tmp_path: Path) -> None:
+    idx = pd.date_range("2021-01-01", periods=100, freq="D")
+    a = pd.Series(range(100), index=idx, dtype=float)
+    b = a + 1
+    a[50:60] = np.nan
+    b[60:70] = np.nan
+    for sym, series in [("AAA", a), ("BBB", b)]:
+        part_dir = tmp_path / f"symbol={sym}" / "year=2021" / "month=01"
+        part_dir.mkdir(parents=True, exist_ok=True)
+        df = pd.DataFrame({"timestamp": idx, "close": series})
+        df.to_parquet(part_dir / "data.parquet")
+
+
+def test_fill_limit_pct_application(tmp_path: Path) -> None:
+    create_large_dataset_with_gaps(tmp_path)
+    cfg = AppConfig(
+        data_dir=tmp_path,
+        results_dir=tmp_path,
+        portfolio=PortfolioConfig(
+            initial_capital=10000.0,
+            risk_per_trade_pct=0.01,
+            max_active_positions=5,
+        ),
+        pair_selection=PairSelectionConfig(
+            lookback_days=1,
+            coint_pvalue_threshold=0.05,
+            ssd_top_n=1,
+            min_half_life_days=1,
+            max_half_life_days=30,
+            min_mean_crossings=12,
+        ),
+        backtest=BacktestConfig(
+            timeframe="1d",
+            rolling_window=1,
+            zscore_threshold=1.0,
+            stop_loss_multiplier=3.0,
+            fill_limit_pct=0.1,
+            commission_pct=0.0,
+            slippage_pct=0.0,
+            annualizing_factor=365,
+        ),
+        walk_forward=WalkForwardConfig(
+            start_date="2021-01-01",
+            end_date="2021-04-10",
+            training_period_days=1,
+            testing_period_days=1,
+        ),
+    )
+    handler = DataHandler(cfg)
+
+    start = pd.Timestamp("2021-01-01")
+    end = pd.Timestamp("2021-04-10")
+    result = handler.load_pair_data("AAA", "BBB", start, end)
+
+    expected_a = pd.Series(np.arange(100, dtype=float), index=pd.date_range("2021-01-01", periods=100, freq="D"))
+    expected_b = expected_a + 1
+    expected_a[50:60] = np.nan
+    expected_b[60:70] = np.nan
+    expected = pd.DataFrame({"AAA": expected_a, "BBB": expected_b})
+    limit = int(len(expected) * 0.1)
+    expected = expected.ffill(limit=limit).bfill(limit=limit)
+    expected = expected[["AAA", "BBB"]].dropna()
+
+    pd.testing.assert_frame_equal(result, expected)
 

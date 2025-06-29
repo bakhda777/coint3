@@ -303,6 +303,10 @@ class DataHandler:
             print(f"Обнаружены дубликаты timestamp для пары {symbol1}-{symbol2}. Удаляем дубликаты.")
             pair_pdf = pair_pdf.drop_duplicates(subset=["timestamp", "symbol"])
 
+        # Рассчитываем допустимое количество последовательных пропусков до группировки
+        total_rows = pair_pdf["timestamp"].nunique()
+        limit = int(total_rows * self.fill_limit_pct)
+
         # Преобразуем в широкий формат (timestamp x symbols)
         wide_df = pair_pdf.pivot_table(index="timestamp", columns="symbol", values="close")
 
@@ -315,7 +319,6 @@ class DataHandler:
         self._freq = freq
         if freq:
             wide_df = wide_df.asfreq(freq)
-        limit = int(len(wide_df) * self.fill_limit_pct)
         wide_df = wide_df.ffill(limit=limit).bfill(limit=limit)
 
         # Возвращаем только нужные символы и удаляем строки с NA
