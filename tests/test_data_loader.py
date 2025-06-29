@@ -1,12 +1,13 @@
-import pandas as pd
 from pathlib import Path
+
+import pandas as pd
 
 from coint2.core.data_loader import DataHandler
 from coint2.utils.config import (
     AppConfig,
     BacktestConfig,
-    PortfolioConfig,
     PairSelectionConfig,
+    PortfolioConfig,
     WalkForwardConfig,
 )
 

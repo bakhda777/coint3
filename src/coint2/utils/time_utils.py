@@ -1,5 +1,6 @@
 import pandas as pd
 
+
 def ensure_datetime_index(df: pd.DataFrame) -> pd.DataFrame:
     """Return a copy of ``df`` with a timezone naive ``DatetimeIndex``.
 

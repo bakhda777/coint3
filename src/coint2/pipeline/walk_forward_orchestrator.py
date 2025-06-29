@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Dict
-
 import pandas as pd
 
+from coint2.core import math_utils, performance
 from coint2.core.data_loader import DataHandler
 from coint2.engine.backtest_engine import PairBacktester
-from coint2.core import performance, math_utils
 from coint2.utils.config import AppConfig
 from coint2.utils.logging_utils import get_logger
 
 
-def run_walk_forward(cfg: AppConfig) -> Dict[str, float]:
+def run_walk_forward(cfg: AppConfig) -> dict[str, float]:
     """Run walk-forward analysis and return aggregated performance metrics."""
     logger = get_logger("walk_forward")
 

@@ -1,19 +1,18 @@
-import pandas as pd
 from pathlib import Path
 
+import pandas as pd
+
+from coint2.core import performance
 from coint2.core.data_loader import DataHandler
 from coint2.engine.backtest_engine import PairBacktester
 from coint2.pipeline import walk_forward_orchestrator as wf
-
 from coint2.utils.config import (
     AppConfig,
-    PairSelectionConfig,
     BacktestConfig,
-    WalkForwardConfig,
+    PairSelectionConfig,
     PortfolioConfig,
+    WalkForwardConfig,
 )
-
-from coint2.core import performance
 
 
 def create_dataset(base_dir: Path) -> None:

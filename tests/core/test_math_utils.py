@@ -3,13 +3,13 @@ import pandas as pd
 from scipy.stats import linregress
 
 from coint2.core.math_utils import (
-    rolling_beta,
-    rolling_zscore,
-    calculate_ssd,
     calculate_half_life,
+    calculate_ssd,
     count_mean_crossings,
     half_life_numba,
     mean_crossings_numba,
+    rolling_beta,
+    rolling_zscore,
 )
 
 

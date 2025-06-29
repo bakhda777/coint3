@@ -1,7 +1,10 @@
 import time
-import pandas as pd
 from pathlib import Path
+
+import pandas as pd
+
 from coint2.core.data_loader import _scan_parquet_files
+
 
 def create_many_files(base: Path, n: int) -> None:
     idx = pd.date_range("2021-01-01", periods=1, freq="D")

@@ -1,11 +1,13 @@
 # ВНИМАНИЕ: Строки с sys.path.insert удалены! Они больше не нужны благодаря conftest.py.
 
-import pandas as pd
 import numpy as np
+import pandas as pd
+
+from coint2.core import performance
 
 # Импортируем код проекта напрямую
 from coint2.engine.backtest_engine import PairBacktester
-from coint2.core import performance
+
 
 def calc_params(df: pd.DataFrame) -> tuple[float, float, float]:
     """Calculate beta, mean and std of spread for the given DataFrame."""

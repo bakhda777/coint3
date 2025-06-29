@@ -6,17 +6,17 @@ jobs:
     steps:
       - uses: actions/checkout@v3
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.11'
       - name: Install dependencies
         run: |
           pip install poetry
-          poetry install
-      - name: Run ruff
-        run: poetry run ruff src tests
-      - name: Run mypy
-        run: poetry run mypy src
+          poetry install --with dev
+      - name: Ruff
+        run: poetry run ruff check . --output-format=github
+      - name: MyPy
+        run: poetry run mypy src tests
       - name: Run pytest
         run: poetry run pytest
       - name: Bench rolling_beta
