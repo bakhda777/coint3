@@ -1,8 +1,7 @@
-from typing import List, Tuple
 import logging
 
-import pandas as pd
 import dask
+import pandas as pd
 from dask import delayed
 from statsmodels.tsa.stattools import coint
 
@@ -23,7 +22,7 @@ def _test_pair_for_tradability(
     min_half_life: float,
     max_half_life: float,
     min_crossings: int,
-) -> Tuple[str, str] | None:
+) -> tuple[str, str] | None:
     """Lazy tradability filter for a pair."""
     # Обеспечиваем, что даты в наивном формате (без timezone)
     if start_date.tzinfo is not None:
@@ -47,7 +46,10 @@ def _test_pair_for_tradability(
 
     spread_np = spread.to_numpy()
     half_life = math_utils.half_life_numba(spread_np)
-    logger.debug(f"Пара {symbol1}-{symbol2}: half_life = {half_life:.2f} (требуется {min_half_life:.2f}-{max_half_life:.2f})")
+    logger.debug(
+        f"Пара {symbol1}-{symbol2}: half_life = {half_life:.2f} "
+        f"(требуется {min_half_life:.2f}-{max_half_life:.2f})"
+    )
     
     if half_life < min_half_life or half_life > max_half_life:
         logger.debug(f"Пара {symbol1}-{symbol2}: отклонена по half_life")
@@ -78,7 +80,7 @@ def _test_pair_for_coint(
     start_date: pd.Timestamp,
     end_date: pd.Timestamp,
     p_value_threshold: float,
-) -> Tuple[str, str, float, float, float] | None:
+) -> tuple[str, str, float, float, float] | None:
     """Lazy test for a single pair using provided handler and dates."""
     # Обеспечиваем, что даты в наивном формате (без timezone)
     if start_date.tzinfo is not None:
@@ -96,8 +98,17 @@ def _test_pair_for_coint(
     logger.debug(f"Пара {symbol1}-{symbol2}: получены данные размером {len(pair_data)} для теста коинтеграции")
     
     # Проверяем типы данных и логируем
-    if not pd.api.types.is_numeric_dtype(pair_data[symbol1]) or not pd.api.types.is_numeric_dtype(pair_data[symbol2]):
-        logger.warning(f"Пара {symbol1}-{symbol2}: данные не числовые: {pair_data[symbol1].dtype}, {pair_data[symbol2].dtype}")
+    if (
+        not pd.api.types.is_numeric_dtype(pair_data[symbol1])
+        or not pd.api.types.is_numeric_dtype(pair_data[symbol2])
+    ):
+        logger.warning(
+            "Пара %s-%s: данные не числовые: %s, %s",
+            symbol1,
+            symbol2,
+            pair_data[symbol1].dtype,
+            pair_data[symbol2].dtype,
+        )
         return None
     
     # Проверяем на наличие NaN, если более 10% - отбрасываем пару
@@ -130,7 +141,7 @@ def find_cointegrated_pairs(
     start_date: pd.Timestamp,
     end_date: pd.Timestamp,
     cfg: AppConfig,
-) -> List[Tuple[str, str, float, float, float]]:
+) -> list[tuple[str, str, float, float, float]]:
     """Find cointegrated pairs using SSD pre-filtering."""
     
     # Обеспечиваем, что даты в наивном формате (без timezone)
@@ -143,7 +154,13 @@ def find_cointegrated_pairs(
 
     logger.info(f"Поиск коинтегрированных пар в периоде {start_date} - {end_date}")
     p_value_threshold = cfg.pair_selection.coint_pvalue_threshold
-    logger.debug(f"Настройки: p_value < {p_value_threshold}, half_life = {cfg.pair_selection.min_half_life_days}-{cfg.pair_selection.max_half_life_days}, min_crossings = {cfg.pair_selection.min_mean_crossings}")
+    logger.debug(
+        "Настройки: p_value < %s, half_life = %s-%s, min_crossings = %s",
+        p_value_threshold,
+        cfg.pair_selection.min_half_life_days,
+        cfg.pair_selection.max_half_life_days,
+        cfg.pair_selection.min_mean_crossings,
+    )
 
     # Stage 1: SSD pre-filter
     logger.info("Этап 1: Загрузка и нормализация данных для SSD-фильтра")
@@ -152,7 +169,10 @@ def find_cointegrated_pairs(
         logger.warning("Не удалось загрузить данные или недостаточно символов")
         return []
     
-    logger.info(f"Загружены данные для {len(normalized.columns)} символов за период {normalized.index[0]} - {normalized.index[-1]}")
+    logger.info(
+        f"Загружены данные для {len(normalized.columns)} символов за период "
+        f"{normalized.index[0]} - {normalized.index[-1]}"
+    )
 
     logger.info(f"Выполняю SSD-фильтрацию для {len(normalized.columns)} символов")
     ssd = math_utils.calculate_ssd(

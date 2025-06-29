@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-import click
-
 from pathlib import Path
+
+import click
 
 from coint2.core.data_loader import DataHandler
 from coint2.engine.backtest_engine import PairBacktester

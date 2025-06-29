@@ -1,13 +1,17 @@
-import dask.dataframe as dd
-import pandas as pd  # type: ignore
-from pathlib import Path
-from typing import List
+import logging
 import threading
 import time
-import logging
-import pyarrow.dataset as ds
-import pyarrow as pa
 
+from pathlib import Path
+
+import dask.dataframe as dd
+import pandas as pd  # type: ignore
+import pyarrow.dataset as ds
+
+import pyarrow as pa
+import pyarrow.dataset as ds
+
+from coint2.utils import empty_ddf, ensure_datetime_index
 from coint2.utils.config import AppConfig
 from coint2.utils import empty_ddf, ensure_datetime_index
 
@@ -58,7 +62,7 @@ class DataHandler:
             self._all_data_cache.clear()
             self._freq = None
 
-    def get_all_symbols(self) -> List[str]:
+    def get_all_symbols(self) -> list[str]:
         """Return list of symbols based on partition directory names."""
         if not self.data_dir.exists():
             return []
@@ -337,7 +341,10 @@ class DataHandler:
                             
             # Оставляем только валидные столбцы
             if valid_columns:
-                logger.debug(f"Отфильтровано {len(data_df.columns) - len(valid_columns)} константных или разреженных серий")
+                logger.debug(
+                    f"Отфильтровано {len(data_df.columns) - len(valid_columns)} "
+                    "константных или разреженных серий"
+                )
                 data_df = data_df[valid_columns]
 
         return data_df

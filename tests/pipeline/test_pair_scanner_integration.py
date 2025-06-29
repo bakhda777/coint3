@@ -1,14 +1,14 @@
-import pandas as pd
 from pathlib import Path
 
-
-from coint2.core.data_loader import DataHandler
-import coint2.pipeline.pair_scanner as pair_scanner
+import pandas as pd
 from dask import delayed
+
+import coint2.pipeline.pair_scanner as pair_scanner
+from coint2.core.data_loader import DataHandler
 from coint2.utils.config import (
     AppConfig,
-    PairSelectionConfig,
     BacktestConfig,
+    PairSelectionConfig,
     PortfolioConfig,
     WalkForwardConfig,
 )

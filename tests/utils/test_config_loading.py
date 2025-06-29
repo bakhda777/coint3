@@ -1,9 +1,9 @@
 from pathlib import Path
 
-from coint2.utils.config import AppConfig, load_config
-from coint2.utils.config import BacktestConfig
-from pydantic import ValidationError
 import pytest
+from pydantic import ValidationError
+
+from coint2.utils.config import AppConfig, BacktestConfig, load_config
 
 
 def test_load_config():

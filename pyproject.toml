@@ -24,8 +24,10 @@ python-dotenv = "*"
 
 [tool.poetry.dev-dependencies]
 pytest = "*"
-ruff = "*"
-mypy = "*"
+
+[tool.poetry.group.dev.dependencies]
+ruff = "^0.4"
+mypy = "^1.10"
 
 [tool.poetry.scripts]
 coint2 = "coint2.cli:main"
@@ -34,6 +36,11 @@ coint2 = "coint2.cli:main"
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
+strict = true
 ignore_missing_imports = true
+
+[tool.ruff]
+line-length = 120
+select = ["E", "F", "B", "I", "UP"]
 

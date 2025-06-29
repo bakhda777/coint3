@@ -1,6 +1,7 @@
-import pandas as pd
 from pathlib import Path
 from uuid import uuid4
+
+import pandas as pd
 
 from coint2.core.data_loader import DataHandler
 from coint2.utils.config import (

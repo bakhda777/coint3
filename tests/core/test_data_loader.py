@@ -1,14 +1,15 @@
-import pandas as pd
-import numpy as np
 from pathlib import Path
 import types
+
+import numpy as np
+import pandas as pd
 
 from coint2.core.data_loader import DataHandler
 from coint2.utils.config import (
     AppConfig,
     BacktestConfig,
-    PortfolioConfig,
     PairSelectionConfig,
+    PortfolioConfig,
     WalkForwardConfig,
 )
 

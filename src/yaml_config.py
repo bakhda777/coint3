@@ -1,5 +1,7 @@
 import ast
-from typing import Any, Iterable
+from collections.abc import Iterable
+from typing import Any
+
 
 def safe_load(stream: Iterable[str] | str) -> Any:
     if hasattr(stream, "read"):
