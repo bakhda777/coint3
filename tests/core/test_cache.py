@@ -1,5 +1,6 @@
 import pandas as pd
 from pathlib import Path
+import threading
 import dask.dataframe as dd
 from coint2.core.data_loader import DataHandler
 from coint2.utils.config import (
@@ -77,3 +78,28 @@ def test_load_all_data_cache(monkeypatch, tmp_path: Path) -> None:
 
     handler.load_all_data_for_period(lookback_days=2)
     assert calls == 1
+
+
+def test_threaded_cache_reload(tmp_path: Path) -> None:
+    create_dataset(tmp_path)
+    cfg = make_cfg(tmp_path)
+    handler = DataHandler(cfg)
+
+    # preload and then clear to force reload
+    handler.load_all_data_for_period(lookback_days=2)
+    handler.clear_cache()
+
+    results: list[pd.DataFrame] = []
+
+    def worker() -> None:
+        results.append(handler.load_all_data_for_period(lookback_days=2))
+
+    threads = [threading.Thread(target=worker) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert len(results) == 2
+    pd.testing.assert_frame_equal(results[0], results[1])
+    assert handler.freq == pd.infer_freq(results[0].index)

@@ -2,6 +2,7 @@ import dask.dataframe as dd
 import pandas as pd  # type: ignore
 from pathlib import Path
 from typing import List
+import threading
 import time
 import numpy as np
 import logging
@@ -23,15 +24,19 @@ class DataHandler:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self._all_data_cache: dd.DataFrame | None = None
         self._freq: str | None = None
+        self._lock = threading.Lock()
 
     @property
     def freq(self) -> str | None:
         """Return detected time step of the loaded data."""
-        return self._freq
+        with self._lock:
+            return self._freq
 
     def clear_cache(self) -> None:
         """Clears the in-memory Dask DataFrame cache."""
-        self._all_data_cache = None
+        with self._lock:
+            self._all_data_cache = None
+            self._freq = None
 
     def get_all_symbols(self) -> List[str]:
         """Return list of symbols based on partition directory names."""
@@ -52,12 +57,15 @@ class DataHandler:
         dask.dataframe.DataFrame
             Lazy Dask DataFrame with the data.
         """
-        if self._all_data_cache is not None:
-            return self._all_data_cache
+        with self._lock:
+            cached = self._all_data_cache
+        if cached is not None:
+            return cached
 
         if not self.data_dir.exists():
-            self._all_data_cache = empty_ddf()
-            return self._all_data_cache
+            with self._lock:
+                self._all_data_cache = empty_ddf()
+                return self._all_data_cache
 
         try:
             # Использование dd.read_parquet с правильными настройками
@@ -71,7 +79,8 @@ class DataHandler:
                 filters=None,  # Не применяем фильтры на уровне партиций
                 validate_schema=False,  # Отключаем строгую валидацию схемы
             )
-            self._all_data_cache = ddf
+            with self._lock:
+                self._all_data_cache = ddf
             return ddf
         except Exception as e:
             logger.debug(f"Ошибка загрузки данных через Dask в _load_full_dataset: {str(e)}")
@@ -183,25 +192,29 @@ class DataHandler:
                     
                 if not dfs:
                     logger.debug("Не удалось загрузить ни один файл")
-                    self._all_data_cache = dd.from_pandas(pd.DataFrame(), npartitions=1)
-                    return self._all_data_cache
+                    with self._lock:
+                        self._all_data_cache = dd.from_pandas(pd.DataFrame(), npartitions=1)
+                        return self._all_data_cache
                     
                 try:
                     # Объединяем все Dask DataFrame в один
                     combined_ddf = dd.concat(dfs)
                     logger.debug("Успешно создан объединенный Dask DataFrame")
-                    self._all_data_cache = combined_ddf
+                    with self._lock:
+                        self._all_data_cache = combined_ddf
                     return combined_ddf
                 except Exception as concat_error:
                     logger.debug(f"Ошибка при объединении DataFrame: {str(concat_error)}")
-                    self._all_data_cache = dd.from_pandas(pd.DataFrame(), npartitions=1)
-                    return self._all_data_cache
+                    with self._lock:
+                        self._all_data_cache = dd.from_pandas(pd.DataFrame(), npartitions=1)
+                        return self._all_data_cache
                     
             except Exception as e2:
                 logger.debug(f"Ошибка при использовании запасного варианта: {str(e2)}")
                 # Если и запасной вариант не сработал, возвращаем пустой фрейм
-                self._all_data_cache = dd.from_pandas(pd.DataFrame(), npartitions=1)
-                return self._all_data_cache
+                with self._lock:
+                    self._all_data_cache = dd.from_pandas(pd.DataFrame(), npartitions=1)
+                    return self._all_data_cache
 
     def load_all_data_for_period(self, lookback_days: int) -> pd.DataFrame:
         """Load close prices for all symbols for the given lookback period."""
@@ -249,9 +262,11 @@ class DataHandler:
         # Сортируем по индексу (дате)
         wide_pdf = wide_pdf.sort_index()
 
-        self._freq = pd.infer_freq(wide_pdf.index)
-        if self._freq:
-            wide_pdf = wide_pdf.asfreq(self._freq)
+        freq_val = pd.infer_freq(wide_pdf.index)
+        with self._lock:
+            self._freq = freq_val
+        if freq_val:
+            wide_pdf = wide_pdf.asfreq(freq_val)
 
         return wide_pdf
 
@@ -325,10 +340,11 @@ class DataHandler:
             return pd.DataFrame()
 
         # Обработка пропущенных значений
-        freq = pd.infer_freq(wide_df.index)
-        self._freq = freq
-        if freq:
-            wide_df = wide_df.asfreq(freq)
+        freq_val = pd.infer_freq(wide_df.index)
+        with self._lock:
+            self._freq = freq_val
+        if freq_val:
+            wide_df = wide_df.asfreq(freq_val)
         wide_df = wide_df.ffill(limit=limit).bfill(limit=limit)
 
         # Возвращаем только нужные символы и удаляем строки с NA
@@ -472,9 +488,11 @@ class DataHandler:
             # Сортируем по индексу (датам)
             wide_pdf = wide_pdf.sort_index()
 
-            self._freq = pd.infer_freq(wide_pdf.index)
-            if self._freq:
-                wide_pdf = wide_pdf.asfreq(self._freq)
+            freq_val = pd.infer_freq(wide_pdf.index)
+            with self._lock:
+                self._freq = freq_val
+            if freq_val:
+                wide_pdf = wide_pdf.asfreq(freq_val)
 
             return wide_pdf
             
@@ -569,9 +587,11 @@ class DataHandler:
                 )
                 wide_df = wide_df.sort_index()
 
-                self._freq = pd.infer_freq(wide_df.index)
-                if self._freq:
-                    wide_df = wide_df.asfreq(self._freq)
+                freq_val = pd.infer_freq(wide_df.index)
+                with self._lock:
+                    self._freq = freq_val
+                if freq_val:
+                    wide_df = wide_df.asfreq(freq_val)
 
                 logger.debug(f"Successfully loaded data manually. Shape: {wide_df.shape}")
                 return wide_df
