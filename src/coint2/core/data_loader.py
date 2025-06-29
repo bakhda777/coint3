@@ -38,6 +38,7 @@ class DataHandler:
         self._all_data_cache: dd.DataFrame | None = None
         self._freq: str | None = None
         self._lock = threading.Lock()
+        self.lookback_days: int = cfg.pair_selection.lookback_days
 
     @property
     def freq(self) -> str | None:
@@ -119,8 +120,9 @@ class DataHandler:
                     self._all_data_cache = empty_ddf()
                 return self._all_data_cache
 
-    def load_all_data_for_period(self, lookback_days: int) -> pd.DataFrame:
-        """Load close prices for all symbols for the given lookback period."""
+    def load_all_data_for_period(self) -> pd.DataFrame:
+        """Load close prices for all symbols for the configured lookback period."""
+
         ddf = self._load_full_dataset()
 
         # Проверка на пустой DataFrame
@@ -136,7 +138,7 @@ class DataHandler:
             return pd.DataFrame()
 
         # Вычисляем начальную дату для фильтрации
-        start_date = end_date - pd.Timedelta(days=lookback_days)
+        start_date = end_date - pd.Timedelta(days=self.lookback_days)
         
         # Фильтруем по дате
         filtered_ddf = ddf[ddf["timestamp"] >= start_date]
