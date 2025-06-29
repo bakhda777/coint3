@@ -16,7 +16,7 @@ pandas = "*"
 scipy = "*"
 numba = "*"
 # ↓↓↓ ЭТИ ЗАВИСИМОСТИ МЫ БЕРЕМ ИЗ ВЕТКИ CODEX ↓↓↓
-pyarrow = "*"
+pyarrow = ">=8.0.0"
 statsmodels = "*"
 dask = {extras = ["dataframe"], version = "*"} # Устанавливаем dask с поддержкой DataFrame
 dask-expr = "*" # Нужен для read_parquet в новых версиях

@@ -64,7 +64,7 @@ class DataHandler:
             ddf = dd.read_parquet(
                 self.data_dir,
                 engine="pyarrow",
-                columns=["timestamp", "close"],
+                columns=None,  # partition columns like 'symbol' included automatically
                 ignore_metadata_file=True,  # Игнорируем _metadata файл
                 calculate_divisions=False,   # Избегаем авто-расчёта разделений
                 # В партициях используется ведущий ноль для месяцев (month=01, month=02 и т.д.)
