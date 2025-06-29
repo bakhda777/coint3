@@ -1,6 +1,7 @@
 import pandas as pd
 from pathlib import Path
 import threading
+import time
 import dask.dataframe as dd
 from coint2.core.data_loader import DataHandler
 from coint2.utils.config import (
@@ -103,3 +104,22 @@ def test_threaded_cache_reload(tmp_path: Path) -> None:
     assert len(results) == 2
     pd.testing.assert_frame_equal(results[0], results[1])
     assert handler.freq == pd.infer_freq(results[0].index)
+
+
+def test_cache_autorefresh(tmp_path: Path) -> None:
+    create_dataset(tmp_path)
+    cfg = make_cfg(tmp_path)
+    handler = DataHandler(cfg)
+
+    initial = handler.load_all_data_for_period(lookback_days=10)
+    assert len(initial) == 5
+
+    part_dir = tmp_path / "symbol=AAA" / "year=2021" / "month=01"
+    new_idx = pd.date_range("2021-01-01", periods=6, freq="D")
+    df = pd.DataFrame({"timestamp": new_idx, "close": range(6)})
+    time.sleep(1)
+    df.to_parquet(part_dir / "data.parquet")
+
+    updated = handler.load_all_data_for_period(lookback_days=10)
+    assert len(updated) == 6
+    assert pd.Timestamp("2021-01-06") in updated.index
