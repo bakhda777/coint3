@@ -208,7 +208,7 @@ class DataHandler:
         ddf = self._load_full_dataset()
 
         # Проверка на пустой DataFrame
-        if not ddf.columns.compute().tolist():
+        if not ddf.columns.tolist():
             return pd.DataFrame()
 
         # Конвертируем timestamp в datetime
@@ -266,7 +266,7 @@ class DataHandler:
         ddf = self._load_full_dataset()
 
         # Проверка на пустой DataFrame
-        if not ddf.columns.compute().tolist():
+        if not ddf.columns.tolist():
             logger.debug(f"Пустой DataFrame для пары {symbol1}-{symbol2}")
             return pd.DataFrame()
             
@@ -411,7 +411,7 @@ class DataHandler:
             ddf = self._load_full_dataset()
 
             # Проверка на пустой DataFrame
-            if not ddf.columns.compute().tolist():
+            if not ddf.columns.tolist():
                 logger.warning("No columns found in dataset")
                 return pd.DataFrame()
 
