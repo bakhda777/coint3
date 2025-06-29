@@ -21,6 +21,9 @@ statsmodels = "*"
 dask = {extras = ["dataframe"], version = "*"} # Устанавливаем dask с поддержкой DataFrame
 dask-expr = "*" # Нужен для read_parquet в новых версиях
 python-dotenv = "*"
+matplotlib = "*"  # Для графиков
+seaborn = "*"     # Для красивых графиков
+plotly = "*"      # Для интерактивных графиков
 
 [tool.poetry.dev-dependencies]
 pytest = "*"

@@ -134,61 +134,77 @@ class DataHandler:
                     self._all_data_cache["all"] = (empty, current_hash)
                 return empty
 
-    def load_all_data_for_period(self) -> pd.DataFrame:
-        """Load close prices for all symbols for the configured lookback period."""
-
-        ddf = self._load_full_dataset()
-
-        # Проверка на пустой DataFrame
-        if not ddf.columns.tolist():
-            return pd.DataFrame()
-
-        # Конвертируем timestamp в datetime
-        ddf["timestamp"] = dd.to_datetime(ddf["timestamp"])
+    def load_all_data_for_period(self, lookback_days: int | None = None) -> pd.DataFrame:
+        """Load close prices for all symbols for the specified or configured lookback period.
         
-        # Находим максимальную дату
-        end_date = ddf["timestamp"].max().compute()
-        if pd.isna(end_date):
+        Parameters
+        ----------
+        lookback_days : int | None, optional
+            Number of days to look back. If None, uses self.lookback_days.
+            
+        Returns
+        -------
+        pd.DataFrame
+            DataFrame with close prices for all symbols.
+        """
+        try:
+            ddf = self._load_full_dataset()
+
+            # Проверка на пустой DataFrame
+            if not ddf.columns.tolist():
+                return pd.DataFrame()
+
+            # Конвертируем timestamp в datetime
+            ddf["timestamp"] = dd.to_datetime(ddf["timestamp"])
+            
+            # Находим максимальную дату
+            end_date = ddf["timestamp"].max().compute()
+            if pd.isna(end_date):
+                return pd.DataFrame()
+
+            # Используем переданный параметр или значение по умолчанию
+            days_to_lookback = lookback_days if lookback_days is not None else self.lookback_days
+            
+            # Вычисляем начальную дату для фильтрации
+            start_date = end_date - pd.Timedelta(days=days_to_lookback)
+            
+            # Фильтруем по дате
+            filtered_ddf = ddf[ddf["timestamp"] >= start_date]
+
+            # Вычисляем отфильтрованные данные и выполняем pivot уже в pandas
+            filtered_df = filtered_ddf.compute()
+            if filtered_df.empty:
+                return pd.DataFrame()
+
+            if filtered_df.duplicated(subset=["timestamp", "symbol"]).any():
+                wide_pdf = filtered_df.pivot_table(
+                    index="timestamp",
+                    columns="symbol",
+                    values="close",
+                    aggfunc="last",
+                )
+            else:
+                wide_pdf = filtered_df.pivot(
+                    index="timestamp",
+                    columns="symbol",
+                    values="close",
+                )
+            if wide_pdf.empty:
+                return pd.DataFrame()
+
+            wide_pdf = ensure_datetime_index(wide_pdf)
+
+            freq_val = pd.infer_freq(wide_pdf.index)
+            with self._lock:
+                self._freq = freq_val
+            if freq_val:
+                wide_pdf = wide_pdf.asfreq(freq_val)
+
+            return wide_pdf
+            
+        except Exception as e:
+            logger.error(f"Ошибка при загрузке данных за период: {str(e)}")
             return pd.DataFrame()
-
-        # Вычисляем начальную дату для фильтрации
-        start_date = end_date - pd.Timedelta(days=self.lookback_days)
-        
-        # Фильтруем по дате
-        filtered_ddf = ddf[ddf["timestamp"] >= start_date]
-
-        # Вычисляем отфильтрованные данные и выполняем pivot уже в pandas
-        filtered_df = filtered_ddf.compute()
-        if filtered_df.empty:
-            return pd.DataFrame()
-
-        if filtered_df.duplicated(subset=["timestamp", "symbol"]).any():
-            wide_pdf = filtered_df.pivot_table(
-                index="timestamp",
-                columns="symbol",
-                values="close",
-                aggfunc="last",
-            )
-        else:
-            wide_pdf = filtered_df.pivot(
-                index="timestamp",
-                columns="symbol",
-                values="close",
-            )
-        if wide_pdf.empty:
-            return pd.DataFrame()
-
-        wide_pdf = ensure_datetime_index(wide_pdf)
-
-
-        freq_val = pd.infer_freq(wide_pdf.index)
-        with self._lock:
-            self._freq = freq_val
-        if freq_val:
-            wide_pdf = wide_pdf.asfreq(freq_val)
-
-
-        return wide_pdf
 
     def load_pair_data(
         self,
@@ -383,27 +399,49 @@ class DataHandler:
             logger.warning(f"Директория данных {self.data_dir} не существует")
             return pd.DataFrame()
 
+        # Преобразуем даты в timestamp формат для фильтрации
+        start_ts = int(start_date.timestamp() * 1000)
+        end_ts = int(end_date.timestamp() * 1000)
+        logger.debug(f"Фильтрация по timestamp: {start_ts} - {end_ts}")
+        
         filters = [
-            ("timestamp", ">=", start_date),
-            ("timestamp", "<=", end_date),
+            ("timestamp", ">=", start_ts),
+            ("timestamp", "<=", end_ts),
         ]
 
         try:
+            # Для партиционированных данных лучше загружать без фильтров и фильтровать после
+            logger.debug("Загрузка всех данных без фильтров...")
             ddf = dd.read_parquet(
                 self.data_dir,
                 engine="pyarrow",
                 columns=["timestamp", "close", "symbol"],
                 ignore_metadata_file=True,
                 calculate_divisions=False,
-                filters=filters,
                 validate_schema=False,
             )
 
-            filtered_df = ddf.compute()
+            # Преобразуем в pandas для фильтрации
+            all_data = ddf.compute()
+            logger.debug(f"Загружено записей всего: {len(all_data)}")
+            
+            if all_data.empty:
+                logger.warning(f"Нет данных в директории {self.data_dir}")
+                return pd.DataFrame()
+            
+            # Фильтруем по времени в pandas
+            mask = (all_data["timestamp"] >= start_ts) & (all_data["timestamp"] <= end_ts)
+            filtered_df = all_data[mask]
+            logger.debug(f"Записей после фильтрации по времени: {len(filtered_df)}")
+            
             if filtered_df.empty:
-                logger.debug(f"No data found between {start_date} and {end_date}")
+                logger.warning(f"No data found between {start_date} and {end_date}")
+                logger.debug(f"Доступный диапазон времени: {pd.to_datetime(all_data['timestamp'].min(), unit='ms')} - {pd.to_datetime(all_data['timestamp'].max(), unit='ms')}")
                 return pd.DataFrame()
 
+            # Преобразуем timestamp в datetime для индекса
+            filtered_df["timestamp"] = pd.to_datetime(filtered_df["timestamp"], unit="ms")
+            
             if filtered_df.duplicated(subset=["timestamp", "symbol"]).any():
                 wide_pdf = filtered_df.pivot_table(
                     index="timestamp",
@@ -419,10 +457,11 @@ class DataHandler:
                 )
 
             if wide_pdf.empty:
-                logger.debug(f"No data found between {start_date} and {end_date}")
+                logger.debug(f"Пустой pivot после преобразования")
                 return pd.DataFrame()
 
             wide_pdf = ensure_datetime_index(wide_pdf)
+            logger.debug(f"Итоговые данны: {wide_pdf.shape}, период: {wide_pdf.index.min()} - {wide_pdf.index.max()}")
 
             freq_val = pd.infer_freq(wide_pdf.index)
             with self._lock:
@@ -432,7 +471,7 @@ class DataHandler:
 
             return wide_pdf
         except Exception as e:
-            logger.debug(f"Error loading data via Dask: {str(e)}")
+            logger.error(f"Error loading data via Dask: {str(e)}")
 
             try:
                 logger.debug("Fallback to pyarrow dataset scanning in preload_all_data")
@@ -442,13 +481,16 @@ class DataHandler:
                 if pdf.empty:
                     return pd.DataFrame()
 
-                start_date_naive = start_date.tz_localize(None) if start_date.tzinfo is not None else start_date
-                end_date_naive = end_date.tz_localize(None) if end_date.tzinfo is not None else end_date
-                mask = (pdf["timestamp"] >= start_date_naive) & (pdf["timestamp"] <= end_date_naive)
+                # Фильтруем по timestamp (в миллисекундах)
+                mask = (pdf["timestamp"] >= start_ts) & (pdf["timestamp"] <= end_ts)
                 pdf = pdf.loc[mask]
                 if pdf.empty:
+                    logger.debug(f"Нет данных в диапазоне {start_ts} - {end_ts}")
                     return pd.DataFrame()
 
+                # Преобразуем timestamp в datetime
+                pdf["timestamp"] = pd.to_datetime(pdf["timestamp"], unit="ms")
+                
                 wide_df = pdf.pivot_table(index="timestamp", columns="symbol", values="close", aggfunc="last")
                 wide_df = ensure_datetime_index(wide_df)
                 freq_val = pd.infer_freq(wide_df.index)
@@ -459,5 +501,5 @@ class DataHandler:
                 logger.debug(f"Successfully loaded data via fallback. Shape: {wide_df.shape}")
                 return wide_df
             except Exception as e2:
-                logger.debug(f"Error loading data manually: {str(e2)}")
+                logger.error(f"Error loading data manually: {str(e2)}")
                 return pd.DataFrame()
