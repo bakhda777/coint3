@@ -321,16 +321,28 @@ class DataHandler:
 
         # Нормализация цен
         if not data_df.empty:
-            logger.debug(f"Количество символов до нормализации: {len(data_df.columns)}")
-            for column in data_df.columns:
-                if pd.api.types.is_numeric_dtype(data_df[column]) and column != "timestamp":
-                    # Нормализуем к начальному значению 100
-                    first_valid_idx = data_df[column].first_valid_index()
-                    if first_valid_idx is not None and not pd.isna(data_df.loc[first_valid_idx, column]):
-                        first_value = data_df.loc[first_valid_idx, column]
-                        if first_value != 0:
-                            data_df[column] = 100 * data_df[column] / first_value
-            logger.debug(f"Количество символов после нормализации: {len(data_df.columns)}")
+            logger.debug(
+                f"Количество символов до нормализации: {len(data_df.columns)}"
+            )
+
+            numeric_cols = [
+                c
+                for c in data_df.columns
+                if pd.api.types.is_numeric_dtype(data_df[c]) and c != "timestamp"
+            ]
+            if numeric_cols:
+                first_values = data_df[numeric_cols].apply(
+                    lambda s: s.loc[s.first_valid_index()] if s.first_valid_index() is not None else pd.NA
+                )
+                valid_cols = first_values[(first_values != 0) & first_values.notna()].index
+                if len(valid_cols) > 0:
+                    data_df[valid_cols] = (
+                        100 * data_df[valid_cols].div(first_values.loc[valid_cols])
+                    )
+
+            logger.debug(
+                f"Количество символов после нормализации: {len(data_df.columns)}"
+            )
             
             # Проверяем наличие константных серий и серий с большим количеством пропусков
             valid_columns = []
