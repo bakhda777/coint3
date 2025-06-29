@@ -2,6 +2,7 @@ import dask.dataframe as dd
 import pandas as pd  # type: ignore
 from pathlib import Path
 from typing import List
+import threading
 import time
 import numpy as np
 import logging
@@ -23,15 +24,19 @@ class DataHandler:
         self.data_dir.mkdir(parents=True, exist_ok=True)
         self._all_data_cache: dd.DataFrame | None = None
         self._freq: str | None = None
+        self._lock = threading.Lock()
 
     @property
     def freq(self) -> str | None:
         """Return detected time step of the loaded data."""
-        return self._freq
+        with self._lock:
+            return self._freq
 
     def clear_cache(self) -> None:
         """Clears the in-memory Dask DataFrame cache."""
-        self._all_data_cache = None
+        with self._lock:
+            self._all_data_cache = None
+            self._freq = None
 
     def get_all_symbols(self) -> List[str]:
         """Return list of symbols based on partition directory names."""
@@ -52,42 +57,46 @@ class DataHandler:
         dask.dataframe.DataFrame
             Lazy Dask DataFrame with the data.
         """
-        if self._all_data_cache is not None:
-            return self._all_data_cache
+        with self._lock:
+            cached = self._all_data_cache
+        if cached is not None:
+            return cached
 
         if not self.data_dir.exists():
-            self._all_data_cache = empty_ddf()
-            return self._all_data_cache
+            with self._lock:
+                self._all_data_cache = empty_ddf()
+                return self._all_data_cache
 
         try:
             # Использование dd.read_parquet с правильными настройками
             ddf = dd.read_parquet(
                 self.data_dir,
                 engine="pyarrow",
-                columns=["timestamp", "close"],
+                columns=None,  # partition columns like 'symbol' included automatically
                 ignore_metadata_file=True,  # Игнорируем _metadata файл
                 calculate_divisions=False,   # Избегаем авто-расчёта разделений
                 # В партициях используется ведущий ноль для месяцев (month=01, month=02 и т.д.)
                 filters=None,  # Не применяем фильтры на уровне партиций
                 validate_schema=False,  # Отключаем строгую валидацию схемы
             )
-            self._all_data_cache = ddf
+            with self._lock:
+                self._all_data_cache = ddf
             return ddf
         except Exception as e:
-            print(f"Ошибка загрузки данных через Dask в _load_full_dataset: {str(e)}")
+            logger.debug(f"Ошибка загрузки данных через Dask в _load_full_dataset: {str(e)}")
             
             try:
                 # Запасной вариант: ручной обход всех parquet-файлов
-                print("Попытка загрузки через glob-обход файлов...")
+                logger.debug("Попытка загрузки через glob-обход файлов...")
 
                 # Собираем все файлы .parquet рекурсивно
                 parquet_files = [str(p) for p in Path(self.data_dir).rglob("*.parquet")]
                 if not parquet_files:
-                    print(f"Не найдено ни одного parquet файла в {self.data_dir}")
+                    logger.debug(f"Не найдено ни одного parquet файла в {self.data_dir}")
 
                     return empty_ddf()
                 
-                print(f"Найдено {len(parquet_files)} файлов parquet")
+                logger.debug(f"Найдено {len(parquet_files)} файлов parquet")
 
                 if self.max_shards is not None:
                     parquet_files = parquet_files[: self.max_shards]
@@ -121,37 +130,37 @@ class DataHandler:
                         # Проверяем, не анализировали ли мы уже этот символ и является ли дата в нужном диапазоне
                         if not file_df.empty and current_symbol not in analyzed_symbols and pd.Timestamp('2022-01-01') <= file_df['timestamp'].min() <= pd.Timestamp('2022-12-31'):
                             analyzed_symbols.add(current_symbol)
-                            print(f"\nDEBUG: Анализ формата данных для символа {current_symbol}")
-                            print(f"DEBUG: Файл {file_path}")
-                            print(f"DEBUG: Тип timestamp: {type(file_df['timestamp'].iloc[0])}")
-                            print(f"DEBUG: Первые timestamp: {file_df['timestamp'].head(3).tolist()}")
+                            logger.debug(f"\nDEBUG: Анализ формата данных для символа {current_symbol}")
+                            logger.debug(f"DEBUG: Файл {file_path}")
+                            logger.debug(f"DEBUG: Тип timestamp: {type(file_df['timestamp'].iloc[0])}")
+                            logger.debug(f"DEBUG: Первые timestamp: {file_df['timestamp'].head(3).tolist()}")
                             
                             # Проверка 15-минутных интервалов
                             if len(file_df) >= 10:
                                 sorted_ts = file_df['timestamp'].sort_values().reset_index(drop=True)
-                                print(f"DEBUG: Детальные timestamp (первые 10): {sorted_ts[:10].tolist()}")
+                                logger.debug(f"DEBUG: Детальные timestamp (первые 10): {sorted_ts[:10].tolist()}")
                                 
                                 # Проверяем разницу между соседними метками времени
                                 diffs = []
                                 for i in range(1, min(10, len(sorted_ts))):
                                     diff = (sorted_ts.iloc[i] - sorted_ts.iloc[i-1]).total_seconds() / 60
                                     diffs.append(diff)
-                                print(f"DEBUG: Интервалы между записями (в минутах): {diffs}")
-                                print(f"DEBUG: Часы для первых 10 записей: {[ts.hour for ts in sorted_ts[:min(10, len(sorted_ts))]]}")
-                                print(f"DEBUG: Минуты для первых 10 записей: {[ts.minute for ts in sorted_ts[:min(10, len(sorted_ts))]]}")
+                                logger.debug(f"DEBUG: Интервалы между записями (в минутах): {diffs}")
+                                logger.debug(f"DEBUG: Часы для первых 10 записей: {[ts.hour for ts in sorted_ts[:min(10, len(sorted_ts))]]}")
+                                logger.debug(f"DEBUG: Минуты для первых 10 записей: {[ts.minute for ts in sorted_ts[:min(10, len(sorted_ts))]]}")
                                 
                                 # Хистограмма часов и минут
                                 hours_count = file_df['timestamp'].dt.hour.value_counts().sort_index()
                                 minutes_count = file_df['timestamp'].dt.minute.value_counts().sort_index()
-                                print(f"DEBUG: Уникальные значения часов: {list(hours_count.index)}")
-                                print(f"DEBUG: Уникальные значения минут: {list(minutes_count.index)}")
+                                logger.debug(f"DEBUG: Уникальные значения часов: {list(hours_count.index)}")
+                                logger.debug(f"DEBUG: Уникальные значения минут: {list(minutes_count.index)}")
                                 
                                 # Проверка на 15-минутные интервалы
                                 expected_minutes = [0, 15, 30, 45]
                                 is_15min = all(minute in expected_minutes for minute in minutes_count.index)
-                                print(f"DEBUG: Данные соответствуют 15-минутным интервалам: {is_15min}")
+                                logger.debug(f"DEBUG: Данные соответствуют 15-минутным интервалам: {is_15min}")
                             else:
-                                print("DEBUG: Файл содержит слишком мало записей для анализа интервалов")
+                                logger.debug("DEBUG: Файл содержит слишком мало записей для анализа интервалов")
                         
                         # Преобразуем timestamp в datetime для всех файлов, если это число
                         if not file_df.empty and isinstance(file_df['timestamp'].iloc[0], (int, float, np.integer, np.floating)):
@@ -159,11 +168,11 @@ class DataHandler:
                             if file_df['timestamp'].iloc[0] > 1e12:  # Больше 2001 года в миллисекундах
                                 file_df['timestamp'] = pd.to_datetime(file_df['timestamp'], unit='ms')
                                 if path.parent.parent.parent.name == "symbol=BTCUSDT" and path.parent.parent.name == "year=2022" and path.parent.name == "month=01":
-                                    print(f"DEBUG: Преобразован timestamp из миллисекунд: {file_df['timestamp'].head(3)}")
+                                    logger.debug(f"DEBUG: Преобразован timestamp из миллисекунд: {file_df['timestamp'].head(3)}")
                             else:
                                 file_df['timestamp'] = pd.to_datetime(file_df['timestamp'], unit='s')
                                 if path.parent.parent.parent.name == "symbol=BTCUSDT" and path.parent.parent.name == "year=2022" and path.parent.name == "month=01":
-                                    print(f"DEBUG: Преобразован timestamp из секунд: {file_df['timestamp'].head(3)}")
+                                    logger.debug(f"DEBUG: Преобразован timestamp из секунд: {file_df['timestamp'].head(3)}")
                         
                         # Убедимся, что все timestamp в наивном формате (без timezone)
                         if not file_df.empty and isinstance(file_df['timestamp'].iloc[0], pd.Timestamp):
@@ -178,37 +187,41 @@ class DataHandler:
                         file_ddf = dd.from_pandas(file_df, npartitions=1)
                         dfs.append(file_ddf)
                     except Exception as file_error:
-                        print(f"Ошибка при чтении файла {file_path}: {str(file_error)}")
+                        logger.debug(f"Ошибка при чтении файла {file_path}: {str(file_error)}")
                         continue
                     
                 if not dfs:
-                    print("Не удалось загрузить ни один файл")
-                    self._all_data_cache = dd.from_pandas(pd.DataFrame(), npartitions=1)
-                    return self._all_data_cache
+                    logger.debug("Не удалось загрузить ни один файл")
+                    with self._lock:
+                        self._all_data_cache = dd.from_pandas(pd.DataFrame(), npartitions=1)
+                        return self._all_data_cache
                     
                 try:
                     # Объединяем все Dask DataFrame в один
                     combined_ddf = dd.concat(dfs)
-                    print("Успешно создан объединенный Dask DataFrame")
-                    self._all_data_cache = combined_ddf
+                    logger.debug("Успешно создан объединенный Dask DataFrame")
+                    with self._lock:
+                        self._all_data_cache = combined_ddf
                     return combined_ddf
                 except Exception as concat_error:
-                    print(f"Ошибка при объединении DataFrame: {str(concat_error)}")
-                    self._all_data_cache = dd.from_pandas(pd.DataFrame(), npartitions=1)
-                    return self._all_data_cache
+                    logger.debug(f"Ошибка при объединении DataFrame: {str(concat_error)}")
+                    with self._lock:
+                        self._all_data_cache = dd.from_pandas(pd.DataFrame(), npartitions=1)
+                        return self._all_data_cache
                     
             except Exception as e2:
-                print(f"Ошибка при использовании запасного варианта: {str(e2)}")
+                logger.debug(f"Ошибка при использовании запасного варианта: {str(e2)}")
                 # Если и запасной вариант не сработал, возвращаем пустой фрейм
-                self._all_data_cache = dd.from_pandas(pd.DataFrame(), npartitions=1)
-                return self._all_data_cache
+                with self._lock:
+                    self._all_data_cache = dd.from_pandas(pd.DataFrame(), npartitions=1)
+                    return self._all_data_cache
 
     def load_all_data_for_period(self, lookback_days: int) -> pd.DataFrame:
         """Load close prices for all symbols for the given lookback period."""
         ddf = self._load_full_dataset()
 
         # Проверка на пустой DataFrame
-        if not ddf.columns.compute().tolist():
+        if not ddf.columns.tolist():
             return pd.DataFrame()
 
         # Конвертируем timestamp в datetime
@@ -230,17 +243,31 @@ class DataHandler:
         if filtered_df.empty:
             return pd.DataFrame()
 
-        wide_pdf = filtered_df.pivot(
-            index="timestamp", columns="symbol", values="close"
-        )
+        if filtered_df.duplicated(subset=["timestamp", "symbol"]).any():
+            wide_pdf = filtered_df.pivot_table(
+                index="timestamp",
+                columns="symbol",
+                values="close",
+                aggfunc="last",
+            )
+        else:
+            wide_pdf = filtered_df.pivot(
+                index="timestamp",
+                columns="symbol",
+                values="close",
+            )
         if wide_pdf.empty:
             return pd.DataFrame()
 
         wide_pdf = ensure_datetime_index(wide_pdf)
 
-        self._freq = infer_frequency(wide_pdf.index)
-        if self._freq:
-            wide_pdf = wide_pdf.asfreq(self._freq)
+
+        freq_val = pd.infer_freq(wide_pdf.index)
+        with self._lock:
+            self._freq = freq_val
+        if freq_val:
+            wide_pdf = wide_pdf.asfreq(freq_val)
+
 
         return wide_pdf
 
@@ -265,7 +292,7 @@ class DataHandler:
         ddf = self._load_full_dataset()
 
         # Проверка на пустой DataFrame
-        if not ddf.columns.compute().tolist():
+        if not ddf.columns.tolist():
             logger.debug(f"Пустой DataFrame для пары {symbol1}-{symbol2}")
             return pd.DataFrame()
             
@@ -299,8 +326,12 @@ class DataHandler:
 
         # Проверка на наличие дубликатов timestamp
         if pair_pdf.duplicated(subset=["timestamp", "symbol"]).any():
-            print(f"Обнаружены дубликаты timestamp для пары {symbol1}-{symbol2}. Удаляем дубликаты.")
+            logger.debug(f"Обнаружены дубликаты timestamp для пары {symbol1}-{symbol2}. Удаляем дубликаты.")
             pair_pdf = pair_pdf.drop_duplicates(subset=["timestamp", "symbol"])
+
+        # Рассчитываем допустимое количество последовательных пропусков до группировки
+        total_rows = pair_pdf["timestamp"].nunique()
+        limit = int(total_rows * self.fill_limit_pct)
 
         # Преобразуем в широкий формат (timestamp x symbols)
         wide_df = pair_pdf.pivot_table(index="timestamp", columns="symbol", values="close")
@@ -310,12 +341,17 @@ class DataHandler:
             return pd.DataFrame()
 
         # Обработка пропущенных значений
-        freq = infer_frequency(wide_df.index)
-        self._freq = freq
-        if freq:
-            wide_df = wide_df.asfreq(freq)
+        freq_val = pd.infer_freq(wide_df.index)
+        with self._lock:
+            self._freq = freq_val
+        if freq_val:
+            wide_df = wide_df.asfreq(freq_val)
+
+        # рассчитываем максимальную длину подряд идущих NA по проценту
         limit = int(len(wide_df) * self.fill_limit_pct)
+
         wide_df = wide_df.ffill(limit=limit).bfill(limit=limit)
+
 
         # Возвращаем только нужные символы и удаляем строки с NA
         if symbol1 in wide_df.columns and symbol2 in wide_df.columns:
@@ -358,7 +394,7 @@ class DataHandler:
 
         # Нормализация цен
         if not data_df.empty:
-            print(f"Количество символов до нормализации: {len(data_df.columns)}")
+            logger.debug(f"Количество символов до нормализации: {len(data_df.columns)}")
             for column in data_df.columns:
                 if pd.api.types.is_numeric_dtype(data_df[column]) and column != "timestamp":
                     # Нормализуем к начальному значению 100
@@ -367,7 +403,7 @@ class DataHandler:
                         first_value = data_df.loc[first_valid_idx, column]
                         if first_value != 0:
                             data_df[column] = 100 * data_df[column] / first_value
-            print(f"Количество символов после нормализации: {len(data_df.columns)}")
+            logger.debug(f"Количество символов после нормализации: {len(data_df.columns)}")
             
             # Проверяем наличие константных серий и серий с большим количеством пропусков
             valid_columns = []
@@ -382,7 +418,7 @@ class DataHandler:
                             
             # Оставляем только валидные столбцы
             if valid_columns:
-                print(f"Отфильтровано {len(data_df.columns) - len(valid_columns)} константных или разреженных серий")
+                logger.debug(f"Отфильтровано {len(data_df.columns) - len(valid_columns)} константных или разреженных серий")
                 data_df = data_df[valid_columns]
 
         return data_df
@@ -410,7 +446,7 @@ class DataHandler:
             ddf = self._load_full_dataset()
 
             # Проверка на пустой DataFrame
-            if not ddf.columns.compute().tolist():
+            if not ddf.columns.tolist():
                 logger.warning("No columns found in dataset")
                 return pd.DataFrame()
 
@@ -434,28 +470,40 @@ class DataHandler:
             # Вычисляем отфильтрованные данные и выполняем pivot уже в pandas
             filtered_df = filtered_ddf.compute()
             if filtered_df.empty:
-                print(f"No data found between {start_date} and {end_date}")
+                logger.debug(f"No data found between {start_date} and {end_date}")
                 return pd.DataFrame()
 
-            wide_pdf = filtered_df.pivot(
-                index="timestamp", columns="symbol", values="close"
-            )
+            if filtered_df.duplicated(subset=["timestamp", "symbol"]).any():
+                wide_pdf = filtered_df.pivot_table(
+                    index="timestamp",
+                    columns="symbol",
+                    values="close",
+                    aggfunc="last",
+                )
+            else:
+                wide_pdf = filtered_df.pivot(
+                    index="timestamp",
+                    columns="symbol",
+                    values="close",
+                )
 
             if wide_pdf.empty:
-                print(f"No data found between {start_date} and {end_date}")
+                logger.debug(f"No data found between {start_date} and {end_date}")
                 return pd.DataFrame()
 
             wide_pdf = ensure_datetime_index(wide_pdf)
 
-            self._freq = infer_frequency(wide_pdf.index)
-            if self._freq:
-                wide_pdf = wide_pdf.asfreq(self._freq)
+            freq_val = pd.infer_freq(wide_pdf.index)
+            with self._lock:
+                self._freq = freq_val
+            if freq_val:
+                wide_pdf = wide_pdf.asfreq(freq_val)
 
             return wide_pdf
             
         except Exception as e:
             # Если Dask-подход не сработал, переходим на ручной обход через pandas
-            print(f"Error loading data via Dask: {str(e)}")
+            logger.debug(f"Error loading data via Dask: {str(e)}")
             
             try:
                 # Запасной вариант - ручной обход parquet-файлов
@@ -468,7 +516,7 @@ class DataHandler:
                 dfs = []
 
                 total_files = len(parquet_files)
-                print(f"Found {total_files} parquet files to process manually")
+                logger.debug(f"Found {total_files} parquet files to process manually")
 
                 if self.max_shards is not None:
                     parquet_files = parquet_files[: self.max_shards]
@@ -494,7 +542,7 @@ class DataHandler:
                             if df['timestamp'].iloc[0] > 1e12:  
                                 df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
                                 if path.parent.parent.parent.name == "symbol=BTCUSDT" and path.parent.parent.name == "year=2022" and path.parent.name == "month=01":
-                                    print(f"PANDAS DEBUG: Преобразован timestamp из миллисекунд: {df['timestamp'].head(3)}")
+                                    logger.debug(f"PANDAS DEBUG: Преобразован timestamp из миллисекунд: {df['timestamp'].head(3)}")
                             else:
                                 df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')
                         
@@ -505,8 +553,8 @@ class DataHandler:
                     
                     # Фильтруем по дате используя строгое сравнение datetime
                     if not df.empty:
-                        print(f"DEBUG Filter: {path}, start_date={start_date}, end_date={end_date}")
-                        print(f"DEBUG Filter: timestamp type={type(df['timestamp'].iloc[0])}, first timestamp={df['timestamp'].iloc[0]}")
+                        logger.debug(f"DEBUG Filter: {path}, start_date={start_date}, end_date={end_date}")
+                        logger.debug(f"DEBUG Filter: timestamp type={type(df['timestamp'].iloc[0])}, first timestamp={df['timestamp'].iloc[0]}")
                         # Убедимся, что start_date и end_date без timezone
                         start_date_naive = start_date.tz_localize(None) if hasattr(start_date, 'tz_localize') and start_date.tzinfo is not None else start_date
                         end_date_naive = end_date.tz_localize(None) if hasattr(end_date, 'tz_localize') and end_date.tzinfo is not None else end_date
@@ -519,7 +567,7 @@ class DataHandler:
                         mask = (df["timestamp"] >= start_date_naive) & (df["timestamp"] <= end_date_naive)
                         filtered_df = df.loc[mask]
                         if not filtered_df.empty and path.parent.parent.parent.name == "symbol=BTCUSDT" and path.parent.parent.name == "year=2022" and path.parent.name == "month=01":
-                            print(f"DEBUG Filter: Найдено {len(filtered_df)} строк после фильтрации по дате")
+                            logger.debug(f"DEBUG Filter: Найдено {len(filtered_df)} строк после фильтрации по дате")
                     else:
                         filtered_df = df
                     
@@ -529,24 +577,41 @@ class DataHandler:
                 
                 # Если нет данных, возвращаем пустой фрейм
                 if not dfs:
-                    print("No data found after manual loading")
+                    logger.debug("No data found after manual loading")
                     return pd.DataFrame()
                 
                 # Объединяем все данные
                 combined_df = pd.concat(dfs, ignore_index=True)
                 
-                # Преобразуем в широкий формат
-                wide_df = combined_df.pivot_table(index="timestamp", columns="symbol", values="close")
+      
+                # собираем «широкий» DataFrame с последними значениями при дублях
+                wide_df = combined_df.pivot_table(
+                    index="timestamp",
+                    columns="symbol",
+                    values="close",
+                    aggfunc="last",
+                )
+
+                # гарантируем корректный DatetimeIndex без tz и с уникальными метками
                 wide_df = ensure_datetime_index(wide_df)
 
-                self._freq = infer_frequency(wide_df.index)
-                if self._freq:
-                    wide_df = wide_df.asfreq(self._freq)
+                # упорядочиваем по времени
+                wide_df = wide_df.sort_index()
 
-                print(f"Successfully loaded data manually. Shape: {wide_df.shape}")
+                # вычисляем частоту до захвата замка
+                freq_val = pd.infer_freq(wide_df.index)
+                with self._lock:
+                    self._freq = freq_val
+
+                # если частота определена — ресэмплим
+                if freq_val:
+                    wide_df = wide_df.asfreq(freq_val)
+
+
+                logger.debug(f"Successfully loaded data manually. Shape: {wide_df.shape}")
                 return wide_df
                 
             except Exception as e2:
                 # Если оба подхода не сработали, логируем ошибку
-                print(f"Error loading data manually: {str(e2)}")
+                logger.debug(f"Error loading data manually: {str(e2)}")
                 return pd.DataFrame()

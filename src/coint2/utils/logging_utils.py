@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
+
+from dotenv import load_dotenv
 
 
 def get_logger(name: str) -> logging.Logger:
@@ -19,6 +22,8 @@ def get_logger(name: str) -> logging.Logger:
     logging.Logger
         Configured logger instance.
     """
+    load_dotenv()
+
     logger = logging.getLogger(name)
     if not logger.handlers:
         handler = logging.StreamHandler(sys.stdout)
@@ -28,5 +33,8 @@ def get_logger(name: str) -> logging.Logger:
         )
         handler.setFormatter(formatter)
         logger.addHandler(handler)
-        logger.setLevel(logging.INFO)
+
+        level_name = os.getenv("LOG_LEVEL", "INFO").upper()
+        level = getattr(logging, level_name, logging.INFO)
+        logger.setLevel(level)
     return logger
