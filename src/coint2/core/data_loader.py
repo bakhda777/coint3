@@ -8,7 +8,7 @@ import numpy as np
 import logging
 
 from coint2.utils.config import AppConfig
-from coint2.utils import empty_ddf
+from coint2.utils import empty_ddf, ensure_datetime_index, infer_frequency
 
 # Настройка логгера
 logger = logging.getLogger(__name__)
@@ -259,14 +259,15 @@ class DataHandler:
         if wide_pdf.empty:
             return pd.DataFrame()
 
-        # Сортируем по индексу (дате)
-        wide_pdf = wide_pdf.sort_index()
+        wide_pdf = ensure_datetime_index(wide_pdf)
+
 
         freq_val = pd.infer_freq(wide_pdf.index)
         with self._lock:
             self._freq = freq_val
         if freq_val:
             wide_pdf = wide_pdf.asfreq(freq_val)
+
 
         return wide_pdf
 
@@ -345,7 +346,12 @@ class DataHandler:
             self._freq = freq_val
         if freq_val:
             wide_df = wide_df.asfreq(freq_val)
+
+        # рассчитываем максимальную длину подряд идущих NA по проценту
+        limit = int(len(wide_df) * self.fill_limit_pct)
+
         wide_df = wide_df.ffill(limit=limit).bfill(limit=limit)
+
 
         # Возвращаем только нужные символы и удаляем строки с NA
         if symbol1 in wide_df.columns and symbol2 in wide_df.columns:
@@ -485,8 +491,7 @@ class DataHandler:
                 logger.debug(f"No data found between {start_date} and {end_date}")
                 return pd.DataFrame()
 
-            # Сортируем по индексу (датам)
-            wide_pdf = wide_pdf.sort_index()
+            wide_pdf = ensure_datetime_index(wide_pdf)
 
             freq_val = pd.infer_freq(wide_pdf.index)
             with self._lock:
@@ -578,20 +583,30 @@ class DataHandler:
                 # Объединяем все данные
                 combined_df = pd.concat(dfs, ignore_index=True)
                 
-                # Преобразуем в широкий формат
+      
+                # собираем «широкий» DataFrame с последними значениями при дублях
                 wide_df = combined_df.pivot_table(
                     index="timestamp",
                     columns="symbol",
                     values="close",
                     aggfunc="last",
                 )
+
+                # гарантируем корректный DatetimeIndex без tz и с уникальными метками
+                wide_df = ensure_datetime_index(wide_df)
+
+                # упорядочиваем по времени
                 wide_df = wide_df.sort_index()
 
+                # вычисляем частоту до захвата замка
                 freq_val = pd.infer_freq(wide_df.index)
                 with self._lock:
                     self._freq = freq_val
+
+                # если частота определена — ресэмплим
                 if freq_val:
                     wide_df = wide_df.asfreq(freq_val)
+
 
                 logger.debug(f"Successfully loaded data manually. Shape: {wide_df.shape}")
                 return wide_df
