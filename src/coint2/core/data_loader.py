@@ -230,9 +230,19 @@ class DataHandler:
         if filtered_df.empty:
             return pd.DataFrame()
 
-        wide_pdf = filtered_df.pivot(
-            index="timestamp", columns="symbol", values="close"
-        )
+        if filtered_df.duplicated(subset=["timestamp", "symbol"]).any():
+            wide_pdf = filtered_df.pivot_table(
+                index="timestamp",
+                columns="symbol",
+                values="close",
+                aggfunc="last",
+            )
+        else:
+            wide_pdf = filtered_df.pivot(
+                index="timestamp",
+                columns="symbol",
+                values="close",
+            )
         if wide_pdf.empty:
             return pd.DataFrame()
 
@@ -438,9 +448,19 @@ class DataHandler:
                 print(f"No data found between {start_date} and {end_date}")
                 return pd.DataFrame()
 
-            wide_pdf = filtered_df.pivot(
-                index="timestamp", columns="symbol", values="close"
-            )
+            if filtered_df.duplicated(subset=["timestamp", "symbol"]).any():
+                wide_pdf = filtered_df.pivot_table(
+                    index="timestamp",
+                    columns="symbol",
+                    values="close",
+                    aggfunc="last",
+                )
+            else:
+                wide_pdf = filtered_df.pivot(
+                    index="timestamp",
+                    columns="symbol",
+                    values="close",
+                )
 
             if wide_pdf.empty:
                 print(f"No data found between {start_date} and {end_date}")
@@ -538,7 +558,12 @@ class DataHandler:
                 combined_df = pd.concat(dfs, ignore_index=True)
                 
                 # Преобразуем в широкий формат
-                wide_df = combined_df.pivot_table(index="timestamp", columns="symbol", values="close")
+                wide_df = combined_df.pivot_table(
+                    index="timestamp",
+                    columns="symbol",
+                    values="close",
+                    aggfunc="last",
+                )
                 wide_df = wide_df.sort_index()
 
                 self._freq = pd.infer_freq(wide_df.index)
