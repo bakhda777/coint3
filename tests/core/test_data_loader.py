@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 from pathlib import Path
+import types
 
 from coint2.core.data_loader import DataHandler
 from coint2.utils.config import (
@@ -323,3 +324,30 @@ def test_fill_limit_pct_application(tmp_path: Path) -> None:
     pd.testing.assert_frame_equal(result, expected)
 
 
+
+
+def create_future_dataset(tmp_path: Path) -> None:
+    idx = pd.date_range("2025-01-11", periods=5, freq="D")
+    for sym in ["AAA", "BBB"]:
+        part_dir = tmp_path / f"symbol={sym}" / "year=2025" / "month=01"
+        part_dir.mkdir(parents=True, exist_ok=True)
+        df = pd.DataFrame({"timestamp": idx, "close": range(5)})
+        df.to_parquet(part_dir / "data.parquet")
+
+
+def test__load_full_dataset(tmp_path: Path) -> None:
+    create_future_dataset(tmp_path)
+    cfg = types.SimpleNamespace(
+        data_dir=tmp_path,
+        backtest=types.SimpleNamespace(fill_limit_pct=0.1),
+        pair_selection=types.SimpleNamespace(lookback_days=10),
+        max_shards=None,
+    )
+    loader = DataHandler(cfg)
+    end_date = pd.Timestamp("2025-01-15")
+
+    ddf = loader._load_full_dataset()
+    df = ddf.compute()
+
+    assert not df.empty
+    assert df["timestamp"].min() >= end_date - pd.Timedelta(days=10)
