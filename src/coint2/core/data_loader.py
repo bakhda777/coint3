@@ -1,19 +1,15 @@
 import logging
 import threading
 import time
-
 from pathlib import Path
 
 import dask.dataframe as dd
 import pandas as pd  # type: ignore
-import pyarrow.dataset as ds
-
 import pyarrow as pa
 import pyarrow.dataset as ds
 
 from coint2.utils import empty_ddf, ensure_datetime_index
 from coint2.utils.config import AppConfig
-from coint2.utils import empty_ddf, ensure_datetime_index
 
 # Настройка логгера
 logger = logging.getLogger(__name__)
@@ -210,51 +206,59 @@ class DataHandler:
             logger.debug(f"Удаляю timezone из end_date: {end_date}")
             end_date = end_date.tz_localize(None)
             
-        logger.debug(f"Загрузка данных для пары {symbol1}-{symbol2} ({start_date} - {end_date})")
-        
-        ddf = self._load_full_dataset()
+        logger.debug(
+            f"Загрузка данных для пары {symbol1}-{symbol2} ({start_date} - {end_date})"
+        )
 
-        # Проверка на пустой DataFrame
-        if not ddf.columns.tolist():
-            logger.debug(f"Пустой DataFrame для пары {symbol1}-{symbol2}")
+        if not self.data_dir.exists():
+            logger.warning(f"Директория данных {self.data_dir} не существует")
             return pd.DataFrame()
-            
-        # Фильтруем только интересующие нас символы
-        pair_ddf = ddf[ddf["symbol"].isin([symbol1, symbol2])]
 
-        # Конвертируем в pandas для дальнейшей обработки
-        pair_pdf = pair_ddf.compute()
+        filters = [
+            ("symbol", "in", [symbol1, symbol2]),
+            ("timestamp", ">=", start_date),
+            ("timestamp", "<=", end_date),
+        ]
 
-        # Проверка на пустой результат
+        try:
+            ddf = dd.read_parquet(
+                self.data_dir,
+                engine="pyarrow",
+                columns=["timestamp", "close", "symbol"],
+                ignore_metadata_file=True,
+                calculate_divisions=False,
+                filters=filters,
+                validate_schema=False,
+            )
+            pair_pdf = ddf.compute()
+        except Exception as e:  # pragma: no cover - fallback rarely used
+            logger.debug(f"Error loading pair data via Dask: {str(e)}")
+            try:
+                logger.debug("Fallback to pyarrow dataset scanning in load_pair_data")
+                dataset = _scan_parquet_files(self.data_dir, max_shards=self.max_shards)
+                arrow_filter = (
+                    ds.field("symbol").isin([symbol1, symbol2])
+                    & (ds.field("timestamp") >= pa.scalar(start_date))
+                    & (ds.field("timestamp") <= pa.scalar(end_date))
+                )
+                table = dataset.to_table(
+                    columns=["timestamp", "close", "symbol"],
+                    filter=arrow_filter,
+                )
+                pair_pdf = table.to_pandas()
+            except Exception as e2:  # pragma: no cover - fallback rarely used
+                logger.debug(f"Error loading pair data manually: {str(e2)}")
+                return pd.DataFrame()
+
         if pair_pdf.empty:
             logger.debug(f"Нет данных для пары {symbol1}-{symbol2}")
             return pd.DataFrame()
-
-        # Убедимся, что timestamp в формате datetime и без timezone
-        pair_pdf["timestamp"] = pd.to_datetime(pair_pdf["timestamp"])
-        
-        # Удаляем timezone, если она есть
-        if hasattr(pair_pdf["timestamp"].dt, 'tz') and pair_pdf["timestamp"].dt.tz is not None:
-            logger.debug(f"Удаляем timezone из данных (была {pair_pdf['timestamp'].dt.tz})")
-            pair_pdf["timestamp"] = pair_pdf["timestamp"].dt.tz_localize(None)
-        
-        # Фильтруем по диапазону дат (теперь все наивные даты)
-        mask = (pair_pdf["timestamp"] >= start_date) & (pair_pdf["timestamp"] <= end_date)
-        pair_pdf = pair_pdf.loc[mask]
-
-        # Проверка на пустой результат после фильтрации
-        if pair_pdf.empty:
-            logger.debug(f"Нет данных для пары {symbol1}-{symbol2} после фильтрации по дате")
-            return pd.DataFrame()
+        pair_pdf["timestamp"] = pd.to_datetime(pair_pdf["timestamp"]).dt.tz_localize(None)
 
         # Проверка на наличие дубликатов timestamp
         if pair_pdf.duplicated(subset=["timestamp", "symbol"]).any():
             logger.debug(f"Обнаружены дубликаты timestamp для пары {symbol1}-{symbol2}. Удаляем дубликаты.")
             pair_pdf = pair_pdf.drop_duplicates(subset=["timestamp", "symbol"])
-
-        # Рассчитываем допустимое количество последовательных пропусков до группировки
-        total_rows = pair_pdf["timestamp"].nunique()
-        limit = int(total_rows * self.fill_limit_pct)
 
         # Преобразуем в широкий формат (timestamp x symbols)
         wide_df = pair_pdf.pivot_table(index="timestamp", columns="symbol", values="close")
@@ -367,34 +371,23 @@ class DataHandler:
             logger.warning(f"Директория данных {self.data_dir} не существует")
             return pd.DataFrame()
 
+        filters = [
+            ("timestamp", ">=", start_date),
+            ("timestamp", "<=", end_date),
+        ]
+
         try:
-            # Загружаем данные через Dask с оптимизированными параметрами
-            ddf = self._load_full_dataset()
+            ddf = dd.read_parquet(
+                self.data_dir,
+                engine="pyarrow",
+                columns=["timestamp", "close", "symbol"],
+                ignore_metadata_file=True,
+                calculate_divisions=False,
+                filters=filters,
+                validate_schema=False,
+            )
 
-            # Проверка на пустой DataFrame
-            if not ddf.columns.tolist():
-                logger.warning("No columns found in dataset")
-                return pd.DataFrame()
-
-            # Конвертируем timestamp в datetime БЕЗ timezone
-            ddf["timestamp"] = dd.to_datetime(ddf["timestamp"])
-            
-            # Удаляем timezone из timestamp (если есть)
-            try:
-                if hasattr(ddf["timestamp"], 'dt') and ddf["timestamp"].dt.tz is not None:
-                    logger.debug("Удаляем timezone из данных в Dask DF")
-                    ddf["timestamp"] = ddf["timestamp"].dt.tz_localize(None)
-            except (AttributeError, TypeError) as e:
-                logger.debug(f"Не удалось проверить timezone в Dask DataFrame: {str(e)}")
-            
-            # Фильтруем данные по заданному диапазону дат (теперь все наивные даты)
-            filtered_ddf = ddf[
-                (ddf["timestamp"] >= start_date) & 
-                (ddf["timestamp"] <= end_date)
-            ]
-
-            # Вычисляем отфильтрованные данные и выполняем pivot уже в pandas
-            filtered_df = filtered_ddf.compute()
+            filtered_df = ddf.compute()
             if filtered_df.empty:
                 logger.debug(f"No data found between {start_date} and {end_date}")
                 return pd.DataFrame()
