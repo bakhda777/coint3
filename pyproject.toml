@@ -20,6 +20,7 @@ pyarrow = ">=8.0.0"
 statsmodels = "*"
 dask = {extras = ["dataframe"], version = "*"} # Устанавливаем dask с поддержкой DataFrame
 dask-expr = "*" # Нужен для read_parquet в новых версиях
+python-dotenv = "*"
 
 [tool.poetry.dev-dependencies]
 pytest = "*"
