@@ -29,7 +29,7 @@ def test_rglob_finds_all_files(tmp_path: Path) -> None:
         results_dir=tmp_path,
         portfolio=PortfolioConfig(initial_capital=1, risk_per_trade_pct=0.1, max_active_positions=1),
         pair_selection=PairSelectionConfig(
-            lookback_days=1,
+            lookback_days=2,
             coint_pvalue_threshold=0.05,
             ssd_top_n=1,
             min_half_life_days=1,
@@ -55,6 +55,6 @@ def test_rglob_finds_all_files(tmp_path: Path) -> None:
     )
     handler = DataHandler(cfg)
 
-    df = handler.load_all_data_for_period(lookback_days=2)
+    df = handler.load_all_data_for_period()
 
     assert not df.empty

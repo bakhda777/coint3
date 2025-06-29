@@ -1,4 +1,5 @@
 from pathlib import Path
+import types
 
 import numpy as np
 import pandas as pd
@@ -34,7 +35,7 @@ def test_load_all_data_for_period(tmp_path: Path) -> None:
             max_active_positions=5,
         ),
         pair_selection=PairSelectionConfig(
-            lookback_days=1,
+            lookback_days=2,
             coint_pvalue_threshold=0.05,
             ssd_top_n=1,
             min_half_life_days=1,
@@ -60,7 +61,7 @@ def test_load_all_data_for_period(tmp_path: Path) -> None:
     )
     handler = DataHandler(cfg)
 
-    result = handler.load_all_data_for_period(lookback_days=2)
+    result = handler.load_all_data_for_period()
 
     pdf = pd.read_parquet(tmp_path, engine="pyarrow")
     pdf["timestamp"] = pd.to_datetime(pdf["timestamp"])
@@ -85,7 +86,7 @@ def test_load_pair_data(tmp_path: Path) -> None:
             max_active_positions=5,
         ),
         pair_selection=PairSelectionConfig(
-            lookback_days=1,
+            lookback_days=10,
             coint_pvalue_threshold=0.05,
             ssd_top_n=1,
             min_half_life_days=1,
@@ -142,7 +143,7 @@ def test_load_and_normalize_data(tmp_path: Path) -> None:
             max_active_positions=5,
         ),
         pair_selection=PairSelectionConfig(
-            lookback_days=1,
+            lookback_days=10,
             coint_pvalue_threshold=0.05,
             ssd_top_n=1,
             min_half_life_days=1,
@@ -230,7 +231,7 @@ def test_clear_cache(tmp_path: Path) -> None:
     )
     handler = DataHandler(cfg)
 
-    initial = handler.load_all_data_for_period(lookback_days=10)
+    initial = handler.load_all_data_for_period()
     assert "CCC" not in initial.columns
 
     idx = pd.date_range("2021-01-01", periods=5, freq="D")
@@ -240,7 +241,7 @@ def test_clear_cache(tmp_path: Path) -> None:
     df.to_parquet(part_dir / "data.parquet")
 
     handler.clear_cache()
-    result = handler.load_all_data_for_period(lookback_days=10)
+    result = handler.load_all_data_for_period()
 
     pdf = pd.read_parquet(tmp_path, engine="pyarrow")
     pdf["timestamp"] = pd.to_datetime(pdf["timestamp"])
@@ -324,3 +325,30 @@ def test_fill_limit_pct_application(tmp_path: Path) -> None:
     pd.testing.assert_frame_equal(result, expected)
 
 
+
+
+def create_future_dataset(tmp_path: Path) -> None:
+    idx = pd.date_range("2025-01-11", periods=5, freq="D")
+    for sym in ["AAA", "BBB"]:
+        part_dir = tmp_path / f"symbol={sym}" / "year=2025" / "month=01"
+        part_dir.mkdir(parents=True, exist_ok=True)
+        df = pd.DataFrame({"timestamp": idx, "close": range(5)})
+        df.to_parquet(part_dir / "data.parquet")
+
+
+def test__load_full_dataset(tmp_path: Path) -> None:
+    create_future_dataset(tmp_path)
+    cfg = types.SimpleNamespace(
+        data_dir=tmp_path,
+        backtest=types.SimpleNamespace(fill_limit_pct=0.1),
+        pair_selection=types.SimpleNamespace(lookback_days=10),
+        max_shards=None,
+    )
+    loader = DataHandler(cfg)
+    end_date = pd.Timestamp("2025-01-15")
+
+    ddf = loader._load_full_dataset()
+    df = ddf.compute()
+
+    assert not df.empty
+    assert df["timestamp"].min() >= end_date - pd.Timedelta(days=10)

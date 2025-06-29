@@ -63,7 +63,7 @@ def test_find_cointegrated_pairs(monkeypatch, tmp_path: Path) -> None:
         ),
     )
     handler = DataHandler(cfg)
-    data = handler.load_all_data_for_period(lookback_days=20)
+    data = handler.load_all_data_for_period()
 
     trad_calls: list[tuple[str, str]] = []
 

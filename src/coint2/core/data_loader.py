@@ -1,15 +1,19 @@
 import logging
 import threading
 import time
+
 from pathlib import Path
 
 import dask.dataframe as dd
 import pandas as pd  # type: ignore
+import pyarrow.dataset as ds
+
 import pyarrow as pa
 import pyarrow.dataset as ds
 
 from coint2.utils import empty_ddf, ensure_datetime_index
 from coint2.utils.config import AppConfig
+from coint2.utils import empty_ddf, ensure_datetime_index
 
 # Настройка логгера
 logger = logging.getLogger(__name__)
@@ -26,17 +30,25 @@ def _scan_parquet_files(path: Path | str, glob: str = "*.parquet", max_shards: i
     return ds.dataset([str(f) for f in files], format="parquet", partitioning="hive")
 
 
+def _dir_mtime_hash(path: Path) -> float:
+    """Return hash value based on modification times of ``.parquet`` files."""
+    mtimes = [f.stat().st_mtime for f in path.rglob("*.parquet")]
+    return max(mtimes) if mtimes else 0.0
+
+
 class DataHandler:
     """Utility class for loading local parquet price files."""
 
-    def __init__(self, cfg: AppConfig) -> None:
+    def __init__(self, cfg: AppConfig, autorefresh: bool = True) -> None:
         self.data_dir = Path(cfg.data_dir)
         self.fill_limit_pct = cfg.backtest.fill_limit_pct
         self.max_shards = cfg.max_shards
         self.data_dir.mkdir(parents=True, exist_ok=True)
-        self._all_data_cache: dd.DataFrame | None = None
+        self.autorefresh = autorefresh
+        self._all_data_cache: dict[str, tuple[dd.DataFrame, float]] = {}
         self._freq: str | None = None
         self._lock = threading.Lock()
+        self.lookback_days: int = cfg.pair_selection.lookback_days
 
     @property
     def freq(self) -> str | None:
@@ -47,7 +59,7 @@ class DataHandler:
     def clear_cache(self) -> None:
         """Clears the in-memory Dask DataFrame cache."""
         with self._lock:
-            self._all_data_cache = None
+            self._all_data_cache.clear()
             self._freq = None
 
     def get_all_symbols(self) -> list[str]:
@@ -69,15 +81,21 @@ class DataHandler:
         dask.dataframe.DataFrame
             Lazy Dask DataFrame with the data.
         """
+        current_hash = _dir_mtime_hash(self.data_dir) if self.autorefresh else 0.0
+
         with self._lock:
-            cached = self._all_data_cache
-        if cached is not None:
-            return cached
+            cached_entry = self._all_data_cache.get("all")
+
+        if cached_entry is not None:
+            cached_ddf, cached_hash = cached_entry
+            if not self.autorefresh or cached_hash == current_hash:
+                return cached_ddf
 
         if not self.data_dir.exists():
+            empty = empty_ddf()
             with self._lock:
-                self._all_data_cache = empty_ddf()
-                return self._all_data_cache
+                self._all_data_cache["all"] = (empty, current_hash)
+            return empty
 
         try:
             # Использование dd.read_parquet с правильными настройками
@@ -92,7 +110,7 @@ class DataHandler:
                 validate_schema=False,  # Отключаем строгую валидацию схемы
             )
             with self._lock:
-                self._all_data_cache = ddf
+                self._all_data_cache["all"] = (ddf, current_hash)
             return ddf
         except Exception as e:
             logger.debug(f"Ошибка загрузки данных через Dask в _load_full_dataset: {str(e)}")
@@ -103,23 +121,26 @@ class DataHandler:
                 table = dataset.to_table(columns=["timestamp", "close", "symbol"])
                 pdf = table.to_pandas()
                 if pdf.empty:
+                    empty = empty_ddf()
                     with self._lock:
-                        self._all_data_cache = empty_ddf()
-                    return self._all_data_cache
+                        self._all_data_cache["all"] = (empty, current_hash)
+                    return empty
 
                 npartitions = max(1, min(32, len(pdf) // 100000 + 1))
                 ddf = dd.from_pandas(pdf, npartitions=npartitions)
                 with self._lock:
-                    self._all_data_cache = ddf
+                    self._all_data_cache["all"] = (ddf, current_hash)
                 return ddf
             except Exception as e2:
                 logger.debug(f"Ошибка при использовании запасного варианта: {str(e2)}")
+                empty = empty_ddf()
                 with self._lock:
-                    self._all_data_cache = empty_ddf()
-                return self._all_data_cache
+                    self._all_data_cache["all"] = (empty, current_hash)
+                return empty
 
-    def load_all_data_for_period(self, lookback_days: int) -> pd.DataFrame:
-        """Load close prices for all symbols for the given lookback period."""
+    def load_all_data_for_period(self) -> pd.DataFrame:
+        """Load close prices for all symbols for the configured lookback period."""
+
         ddf = self._load_full_dataset()
 
         # Проверка на пустой DataFrame
@@ -135,7 +156,7 @@ class DataHandler:
             return pd.DataFrame()
 
         # Вычисляем начальную дату для фильтрации
-        start_date = end_date - pd.Timedelta(days=lookback_days)
+        start_date = end_date - pd.Timedelta(days=self.lookback_days)
         
         # Фильтруем по дате
         filtered_ddf = ddf[ddf["timestamp"] >= start_date]
