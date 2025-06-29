@@ -269,6 +269,7 @@ def create_large_dataset_with_gaps(tmp_path: Path) -> None:
 
 def test_fill_limit_pct_application(tmp_path: Path) -> None:
     create_large_dataset_with_gaps(tmp_path)
+
     cfg = AppConfig(
         data_dir=tmp_path,
         results_dir=tmp_path,
@@ -297,7 +298,9 @@ def test_fill_limit_pct_application(tmp_path: Path) -> None:
         ),
         walk_forward=WalkForwardConfig(
             start_date="2021-01-01",
+
             end_date="2021-04-10",
+
             training_period_days=1,
             testing_period_days=1,
         ),
@@ -318,4 +321,5 @@ def test_fill_limit_pct_application(tmp_path: Path) -> None:
     expected = expected[["AAA", "BBB"]].dropna()
 
     pd.testing.assert_frame_equal(result, expected)
+
 

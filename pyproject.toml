@@ -10,16 +10,17 @@ python = "^3.10"
 click = "*"
 joblib = "*"
 pydantic = "*"
-pyyaml = "*" 
+pyyaml = "^6.0"
 numpy = "*"
 pandas = "*"
 scipy = "*"
 numba = "*"
 # ↓↓↓ ЭТИ ЗАВИСИМОСТИ МЫ БЕРЕМ ИЗ ВЕТКИ CODEX ↓↓↓
-pyarrow = "*"
+pyarrow = ">=8.0.0"
 statsmodels = "*"
 dask = {extras = ["dataframe"], version = "*"} # Устанавливаем dask с поддержкой DataFrame
 dask-expr = "*" # Нужен для read_parquet в новых версиях
+python-dotenv = "*"
 
 [tool.poetry.dev-dependencies]
 pytest = "*"

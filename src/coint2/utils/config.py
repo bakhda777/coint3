@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-import yaml  # type: ignore
+import yaml as pyyaml  # type: ignore
 from pydantic import BaseModel, DirectoryPath, Field  # type: ignore
 
 
@@ -73,5 +73,5 @@ def load_config(path: Path) -> AppConfig:
         Parsed configuration object.
     """
     with path.open("r", encoding="utf-8") as f:
-        raw_cfg = yaml.safe_load(f)
+        raw_cfg = pyyaml.safe_load(f)
     return AppConfig(**raw_cfg)
