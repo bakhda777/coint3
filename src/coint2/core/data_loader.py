@@ -6,12 +6,25 @@ import threading
 import time
 import numpy as np
 import logging
+import pyarrow.dataset as ds
+import pyarrow as pa
 
 from coint2.utils.config import AppConfig
 from coint2.utils import empty_ddf, ensure_datetime_index, infer_frequency
 
 # Настройка логгера
 logger = logging.getLogger(__name__)
+
+
+def _scan_parquet_files(path: Path | str, glob: str = "*.parquet", max_shards: int | None = None) -> ds.Dataset:
+    """Build pyarrow dataset from parquet files under ``path``."""
+    base = Path(path)
+    files = sorted(base.rglob(glob))
+    if max_shards is not None:
+        files = files[:max_shards]
+    if not files:
+        return ds.dataset(pa.table({}))
+    return ds.dataset([str(f) for f in files], format="parquet", partitioning="hive")
 
 
 class DataHandler:
@@ -84,137 +97,27 @@ class DataHandler:
             return ddf
         except Exception as e:
             logger.debug(f"Ошибка загрузки данных через Dask в _load_full_dataset: {str(e)}")
-            
+
             try:
-                # Запасной вариант: ручной обход всех parquet-файлов
-                logger.debug("Попытка загрузки через glob-обход файлов...")
-
-                # Собираем все файлы .parquet рекурсивно
-                parquet_files = [str(p) for p in Path(self.data_dir).rglob("*.parquet")]
-                if not parquet_files:
-                    logger.debug(f"Не найдено ни одного parquet файла в {self.data_dir}")
-
-                    return empty_ddf()
-                
-                logger.debug(f"Найдено {len(parquet_files)} файлов parquet")
-
-                if self.max_shards is not None:
-                    parquet_files = parquet_files[: self.max_shards]
-                
-                # Словарь для отслеживания проанализированных символов для диагностики
-                analyzed_symbols = set()
-                
-                # Создаем список Dask DataFrame из каждого файла
-                dfs = []
-                for file_path in parquet_files:
-                    path = Path(file_path)
-                    
-                    # Определяем symbol из пути (3 уровня вверх от файла: symbol=XXX/year=YYYY/month=MM/part.parquet)
-                    symbol_dir = path.parent.parent.parent.name
-                    symbol = symbol_dir.replace("symbol=", "")
-                    
-                    try:
-                        # Читаем файл напрямую через pandas с отключением проверки схемы
-                        # и использованием только pyarrow без dask
-                        file_df = pd.read_parquet(
-                            file_path, 
-                            engine="pyarrow",
-                            columns=["timestamp", "close"]
-                        )
-                        
-                        # Диагностическая информация о формате timestamp для первого файла каждого символа
-                        # Извлекаем имя символа из пути
-                        symbol_dir = path.parent.parent.parent.name
-                        current_symbol = symbol_dir.replace("symbol=", "")
-                        
-                        # Проверяем, не анализировали ли мы уже этот символ и является ли дата в нужном диапазоне
-                        if not file_df.empty and current_symbol not in analyzed_symbols and pd.Timestamp('2022-01-01') <= file_df['timestamp'].min() <= pd.Timestamp('2022-12-31'):
-                            analyzed_symbols.add(current_symbol)
-                            logger.debug(f"\nDEBUG: Анализ формата данных для символа {current_symbol}")
-                            logger.debug(f"DEBUG: Файл {file_path}")
-                            logger.debug(f"DEBUG: Тип timestamp: {type(file_df['timestamp'].iloc[0])}")
-                            logger.debug(f"DEBUG: Первые timestamp: {file_df['timestamp'].head(3).tolist()}")
-                            
-                            # Проверка 15-минутных интервалов
-                            if len(file_df) >= 10:
-                                sorted_ts = file_df['timestamp'].sort_values().reset_index(drop=True)
-                                logger.debug(f"DEBUG: Детальные timestamp (первые 10): {sorted_ts[:10].tolist()}")
-                                
-                                # Проверяем разницу между соседними метками времени
-                                diffs = []
-                                for i in range(1, min(10, len(sorted_ts))):
-                                    diff = (sorted_ts.iloc[i] - sorted_ts.iloc[i-1]).total_seconds() / 60
-                                    diffs.append(diff)
-                                logger.debug(f"DEBUG: Интервалы между записями (в минутах): {diffs}")
-                                logger.debug(f"DEBUG: Часы для первых 10 записей: {[ts.hour for ts in sorted_ts[:min(10, len(sorted_ts))]]}")
-                                logger.debug(f"DEBUG: Минуты для первых 10 записей: {[ts.minute for ts in sorted_ts[:min(10, len(sorted_ts))]]}")
-                                
-                                # Хистограмма часов и минут
-                                hours_count = file_df['timestamp'].dt.hour.value_counts().sort_index()
-                                minutes_count = file_df['timestamp'].dt.minute.value_counts().sort_index()
-                                logger.debug(f"DEBUG: Уникальные значения часов: {list(hours_count.index)}")
-                                logger.debug(f"DEBUG: Уникальные значения минут: {list(minutes_count.index)}")
-                                
-                                # Проверка на 15-минутные интервалы
-                                expected_minutes = [0, 15, 30, 45]
-                                is_15min = all(minute in expected_minutes for minute in minutes_count.index)
-                                logger.debug(f"DEBUG: Данные соответствуют 15-минутным интервалам: {is_15min}")
-                            else:
-                                logger.debug("DEBUG: Файл содержит слишком мало записей для анализа интервалов")
-                        
-                        # Преобразуем timestamp в datetime для всех файлов, если это число
-                        if not file_df.empty and isinstance(file_df['timestamp'].iloc[0], (int, float, np.integer, np.floating)):
-                            # Если это unix timestamp в миллисекундах
-                            if file_df['timestamp'].iloc[0] > 1e12:  # Больше 2001 года в миллисекундах
-                                file_df['timestamp'] = pd.to_datetime(file_df['timestamp'], unit='ms')
-                                if path.parent.parent.parent.name == "symbol=BTCUSDT" and path.parent.parent.name == "year=2022" and path.parent.name == "month=01":
-                                    logger.debug(f"DEBUG: Преобразован timestamp из миллисекунд: {file_df['timestamp'].head(3)}")
-                            else:
-                                file_df['timestamp'] = pd.to_datetime(file_df['timestamp'], unit='s')
-                                if path.parent.parent.parent.name == "symbol=BTCUSDT" and path.parent.parent.name == "year=2022" and path.parent.name == "month=01":
-                                    logger.debug(f"DEBUG: Преобразован timestamp из секунд: {file_df['timestamp'].head(3)}")
-                        
-                        # Убедимся, что все timestamp в наивном формате (без timezone)
-                        if not file_df.empty and isinstance(file_df['timestamp'].iloc[0], pd.Timestamp):
-                            # Если есть timezone, убираем его
-                            if file_df['timestamp'].dt.tz is not None:
-                                file_df['timestamp'] = file_df['timestamp'].dt.tz_localize(None)
-                        
-                        # Добавляем информацию о символе
-                        file_df["symbol"] = symbol
-                        
-                        # Создаем маленький Dask DataFrame из pandas DataFrame
-                        file_ddf = dd.from_pandas(file_df, npartitions=1)
-                        dfs.append(file_ddf)
-                    except Exception as file_error:
-                        logger.debug(f"Ошибка при чтении файла {file_path}: {str(file_error)}")
-                        continue
-                    
-                if not dfs:
-                    logger.debug("Не удалось загрузить ни один файл")
+                logger.debug("Fallback to pyarrow dataset scanning")
+                dataset = _scan_parquet_files(self.data_dir, max_shards=self.max_shards)
+                table = dataset.to_table(columns=["timestamp", "close", "symbol"])
+                pdf = table.to_pandas()
+                if pdf.empty:
                     with self._lock:
-                        self._all_data_cache = dd.from_pandas(pd.DataFrame(), npartitions=1)
-                        return self._all_data_cache
-                    
-                try:
-                    # Объединяем все Dask DataFrame в один
-                    combined_ddf = dd.concat(dfs)
-                    logger.debug("Успешно создан объединенный Dask DataFrame")
-                    with self._lock:
-                        self._all_data_cache = combined_ddf
-                    return combined_ddf
-                except Exception as concat_error:
-                    logger.debug(f"Ошибка при объединении DataFrame: {str(concat_error)}")
-                    with self._lock:
-                        self._all_data_cache = dd.from_pandas(pd.DataFrame(), npartitions=1)
-                        return self._all_data_cache
-                    
+                        self._all_data_cache = empty_ddf()
+                    return self._all_data_cache
+
+                npartitions = max(1, min(32, len(pdf) // 100000 + 1))
+                ddf = dd.from_pandas(pdf, npartitions=npartitions)
+                with self._lock:
+                    self._all_data_cache = ddf
+                return ddf
             except Exception as e2:
                 logger.debug(f"Ошибка при использовании запасного варианта: {str(e2)}")
-                # Если и запасной вариант не сработал, возвращаем пустой фрейм
                 with self._lock:
-                    self._all_data_cache = dd.from_pandas(pd.DataFrame(), npartitions=1)
-                    return self._all_data_cache
+                    self._all_data_cache = empty_ddf()
+                return self._all_data_cache
 
     def load_all_data_for_period(self, lookback_days: int) -> pd.DataFrame:
         """Load close prices for all symbols for the given lookback period."""
@@ -500,118 +403,33 @@ class DataHandler:
                 wide_pdf = wide_pdf.asfreq(freq_val)
 
             return wide_pdf
-            
         except Exception as e:
-            # Если Dask-подход не сработал, переходим на ручной обход через pandas
             logger.debug(f"Error loading data via Dask: {str(e)}")
-            
+
             try:
-                # Запасной вариант - ручной обход parquet-файлов
-                from pathlib import Path
-
-                # Ищем все файлы .parquet рекурсивно в директории данных
-                parquet_files = list(Path(self.data_dir).rglob("*.parquet"))
-                
-                # Создаем пустой список для хранения данных
-                dfs = []
-
-                total_files = len(parquet_files)
-                logger.debug(f"Found {total_files} parquet files to process manually")
-
-                if self.max_shards is not None:
-                    parquet_files = parquet_files[: self.max_shards]
-
-                for file_path in parquet_files:
-                    path = Path(file_path)
-                    
-                    # Извлекаем информацию о символе из пути
-                    symbol_dir = path.parent.parent.parent.name
-                    symbol = symbol_dir.replace("symbol=", "")
-                    
-                    # Читаем только необходимые колонки
-                    df = pd.read_parquet(file_path, columns=["timestamp", "close"])
-                    
-                    # Добавляем информацию о символе
-                    df["symbol"] = symbol
-                    
-                    # Проверяем и преобразуем timestamp в корректный формат datetime
-                    if not df.empty:
-                        # Если timestamp - это число, преобразуем его
-                        if isinstance(df['timestamp'].iloc[0], (int, float, np.integer, np.floating)):
-                            # Если это unix timestamp в миллисекундах (больше 2001 года в миллисекундах)
-                            if df['timestamp'].iloc[0] > 1e12:  
-                                df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
-                                if path.parent.parent.parent.name == "symbol=BTCUSDT" and path.parent.parent.name == "year=2022" and path.parent.name == "month=01":
-                                    logger.debug(f"PANDAS DEBUG: Преобразован timestamp из миллисекунд: {df['timestamp'].head(3)}")
-                            else:
-                                df['timestamp'] = pd.to_datetime(df['timestamp'], unit='s')
-                        
-                        # Если timestamp уже в формате datetime, убедимся что timezone удален
-                        elif isinstance(df['timestamp'].iloc[0], pd.Timestamp) and df['timestamp'].dt.tz is not None:
-                            logger.debug(f"Удаляем timezone {df['timestamp'].dt.tz} из timestamp при ручной загрузке")
-                            df['timestamp'] = df['timestamp'].dt.tz_localize(None)
-                    
-                    # Фильтруем по дате используя строгое сравнение datetime
-                    if not df.empty:
-                        logger.debug(f"DEBUG Filter: {path}, start_date={start_date}, end_date={end_date}")
-                        logger.debug(f"DEBUG Filter: timestamp type={type(df['timestamp'].iloc[0])}, first timestamp={df['timestamp'].iloc[0]}")
-                        # Убедимся, что start_date и end_date без timezone
-                        start_date_naive = start_date.tz_localize(None) if hasattr(start_date, 'tz_localize') and start_date.tzinfo is not None else start_date
-                        end_date_naive = end_date.tz_localize(None) if hasattr(end_date, 'tz_localize') and end_date.tzinfo is not None else end_date
-                        
-                        # Убедимся, что timestamp в df без timezone
-                        if not df.empty and hasattr(df['timestamp'].iloc[0], 'tzinfo') and df['timestamp'].iloc[0].tzinfo is not None:
-                            df['timestamp'] = df['timestamp'].dt.tz_localize(None)
-                            
-                        # Теперь сравнение будет корректным (без timezone с обеих сторон)
-                        mask = (df["timestamp"] >= start_date_naive) & (df["timestamp"] <= end_date_naive)
-                        filtered_df = df.loc[mask]
-                        if not filtered_df.empty and path.parent.parent.parent.name == "symbol=BTCUSDT" and path.parent.parent.name == "year=2022" and path.parent.name == "month=01":
-                            logger.debug(f"DEBUG Filter: Найдено {len(filtered_df)} строк после фильтрации по дате")
-                    else:
-                        filtered_df = df
-                    
-                    # Добавляем в список, если фрейм не пуст
-                    if not filtered_df.empty:
-                        dfs.append(filtered_df)
-                
-                # Если нет данных, возвращаем пустой фрейм
-                if not dfs:
-                    logger.debug("No data found after manual loading")
+                logger.debug("Fallback to pyarrow dataset scanning in preload_all_data")
+                dataset = _scan_parquet_files(self.data_dir, max_shards=self.max_shards)
+                table = dataset.to_table(columns=["timestamp", "close", "symbol"])
+                pdf = table.to_pandas()
+                if pdf.empty:
                     return pd.DataFrame()
-                
-                # Объединяем все данные
-                combined_df = pd.concat(dfs, ignore_index=True)
-                
-      
-                # собираем «широкий» DataFrame с последними значениями при дублях
-                wide_df = combined_df.pivot_table(
-                    index="timestamp",
-                    columns="symbol",
-                    values="close",
-                    aggfunc="last",
-                )
 
-                # гарантируем корректный DatetimeIndex без tz и с уникальными метками
+                start_date_naive = start_date.tz_localize(None) if start_date.tzinfo is not None else start_date
+                end_date_naive = end_date.tz_localize(None) if end_date.tzinfo is not None else end_date
+                mask = (pdf["timestamp"] >= start_date_naive) & (pdf["timestamp"] <= end_date_naive)
+                pdf = pdf.loc[mask]
+                if pdf.empty:
+                    return pd.DataFrame()
+
+                wide_df = pdf.pivot_table(index="timestamp", columns="symbol", values="close", aggfunc="last")
                 wide_df = ensure_datetime_index(wide_df)
-
-                # упорядочиваем по времени
-                wide_df = wide_df.sort_index()
-
-                # вычисляем частоту до захвата замка
                 freq_val = pd.infer_freq(wide_df.index)
                 with self._lock:
                     self._freq = freq_val
-
-                # если частота определена — ресэмплим
                 if freq_val:
                     wide_df = wide_df.asfreq(freq_val)
-
-
-                logger.debug(f"Successfully loaded data manually. Shape: {wide_df.shape}")
+                logger.debug(f"Successfully loaded data via fallback. Shape: {wide_df.shape}")
                 return wide_df
-                
             except Exception as e2:
-                # Если оба подхода не сработали, логируем ошибку
                 logger.debug(f"Error loading data manually: {str(e2)}")
                 return pd.DataFrame()
