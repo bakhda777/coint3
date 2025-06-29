@@ -118,7 +118,9 @@ def _test_pair_for_coint(
         logger.debug(f"Пара {symbol1}-{symbol2}: слишком много NaN ({nan_ratio1:.2f}, {nan_ratio2:.2f})")
         return None
     
-    pvalue = _coint_test(pair_data[symbol1].dropna(), pair_data[symbol2].dropna())
+    # Очищаем данные от NaN одновременно по обоим столбцам, чтобы сохранить синхронизацию
+    clean_data = pair_data[[symbol1, symbol2]].dropna()
+    pvalue = _coint_test(clean_data[symbol1], clean_data[symbol2])
     logger.debug(f"Пара {symbol1}-{symbol2}: p-value = {pvalue:.4f} (требуется < {p_value_threshold:.4f})")
     
     if pvalue >= p_value_threshold:
